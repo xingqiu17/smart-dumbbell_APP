@@ -27,6 +27,7 @@ import java.util.*
 import androidx.navigation.NavController
 import java.time.temporal.TemporalAdjusters
 import java.time.temporal.ChronoUnit
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,13 +157,18 @@ private fun DateCell(
         else               -> MaterialTheme.colorScheme.onSurface
     }
 
+    // 圆形背景，只用于“今日”或“选中”
+    val circleBg = if (isToday || isSelected)
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+    else Color.Transparent
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable { onClick() }
             .padding(4.dp)
     ) {
-        // 星期缩写（仅当 showWeekDay 为 true）
+        // 顶部星期（周视图时显示）
         if (showWeekDay) {
             Text(
                 text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
@@ -172,39 +178,36 @@ private fun DateCell(
             Spacer(Modifier.height(4.dp))
         }
 
-        // 日期泡泡：只有这个圆包含背景，训练小点在它外面
-        val bubbleBg = when {
-            isToday    -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-            isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-            else       -> Color.Transparent
-        }
+        // 主体圆形容器
         Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(bubbleBg),
+                .background(circleBg),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = date.dayOfMonth.toString(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isToday) MaterialTheme.colorScheme.onPrimary else textColor
-            )
-        }
-
-        // 训练日小圆点
-        if (isTrained) {
-            Spacer(Modifier.height(2.dp))
+            // 如果是训练日，则在文字后面画绿色矩形背景
             Box(
-                Modifier
-                    .size(6.dp)
-                    .background(Color(0xFF4CAF50), shape = CircleShape)
-            )
-        } else {
-            Spacer(Modifier.height(8.dp))
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (isTrained) Color(0xFF4CAF50) else Color.Transparent)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = date.dayOfMonth.toString(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when {
+                        isTrained -> Color.White
+                        isToday   -> MaterialTheme.colorScheme.onPrimary
+                        else      -> textColor
+                    }
+                )
+            }
         }
     }
 }
+
 
 
 
