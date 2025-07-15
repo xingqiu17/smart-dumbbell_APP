@@ -11,6 +11,9 @@ import androidx.navigation.compose.rememberNavController
 import com.example.dumb_app.feature.workout.WorkoutScreen
 import com.example.dumb_app.feature.workout.WifiConnectScreen
 import com.example.dumb_app.feature.record.RecordScreen
+import com.example.dumb_app.feature.profile.ProfileScreen
+import com.example.dumb_app.feature.profile.EditBodyDataScreen
+import com.example.dumb_app.feature.profile.EditUsernameScreen
 
 @Composable
 fun NavGraph(
@@ -27,10 +30,17 @@ fun NavGraph(
             RecordScreen(navController)
         }
         composable("profile") {
-            /* TODO: 以后填 ProfileScreen(navController) */
+            ProfileScreen(navController)
         }
         composable("wifiConnect") {
             WifiConnectScreen(navController)
+        }
+        composable("editUsername") {
+            EditUsernameScreen(navController)
+        }
+        // 新增编辑身体数据页面
+        composable("editBodyData") {
+            EditBodyDataScreen(navController)
         }
     }
 }

@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.dumb_app.feature.profile.ProfileScreen
 import com.example.dumb_app.feature.record.RecordScreen
 import com.example.dumb_app.feature.workout.WorkoutScreen
 import com.example.dumb_app.feature.workout.WifiConnectScreen
@@ -42,7 +43,7 @@ fun DumbbellApp() {
         ) {
             composable("workout")    { WorkoutScreen(navController) }
             composable("record")     { RecordScreen(navController) }
-            composable("profile")    { /* TODO: ProfileScreen(navController) */ }
+            composable("profile")    { ProfileScreen(navController)}
             composable("wifiConnect"){ WifiConnectScreen(navController) }
         }
     }
