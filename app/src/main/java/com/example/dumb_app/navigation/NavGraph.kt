@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.dumb_app.feature.workout.WorkoutScreen
 import com.example.dumb_app.feature.workout.WifiConnectScreen
+import com.example.dumb_app.feature.record.RecordScreen
 
 @Composable
 fun NavGraph(
@@ -23,7 +24,7 @@ fun NavGraph(
             WorkoutScreen(navController)
         }
         composable("record") {
-            /* TODO: 以后填 RecordScreen(navController) */
+            RecordScreen(navController)
         }
         composable("profile") {
             /* TODO: 以后填 ProfileScreen(navController) */

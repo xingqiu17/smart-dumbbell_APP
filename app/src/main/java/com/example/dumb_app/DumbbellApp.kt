@@ -3,10 +3,15 @@
 package com.example.dumb_app
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.*
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.example.dumb_app.feature.record.RecordScreen
 import com.example.dumb_app.feature.workout.WorkoutScreen
 import com.example.dumb_app.feature.workout.WifiConnectScreen
 import com.example.dumb_app.ui.component.BottomNavigationBar
@@ -15,7 +20,6 @@ import com.example.dumb_app.ui.component.BottomNavigationBar
 @Composable
 fun DumbbellApp() {
     val navController = rememberNavController()
-    // 监听当前 route
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: "workout"
 
@@ -30,15 +34,15 @@ fun DumbbellApp() {
                 }
             }
         }
-    ) { padding ->
+    ) { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = "workout",
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.padding(innerPadding)
         ) {
-            composable("workout")   { WorkoutScreen(navController) }
-            composable("record")    { /* TODO: RecordScreen(navController) */ }
-            composable("profile")   { /* TODO: ProfileScreen(navController) */ }
+            composable("workout")    { WorkoutScreen(navController) }
+            composable("record")     { RecordScreen(navController) }
+            composable("profile")    { /* TODO: ProfileScreen(navController) */ }
             composable("wifiConnect"){ WifiConnectScreen(navController) }
         }
     }
