@@ -26,75 +26,83 @@ fun WorkoutScreen(nav: NavController) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSheet by remember { mutableStateOf(false) }
 
-    // ── Scaffold：顶部栏 + 底部导航 ───────────────────
-    Scaffold(
-        topBar = {
-            SmallTopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = { nav.navigate("wifiConnect") }) {
-                        Icon(Icons.Default.Add, contentDescription = "添加设备")
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background     // ← 用主题背景色
+    ) {
+        // ── Scaffold：顶部栏 + 底部导航 ───────────────────
+        Scaffold(
+            topBar = {
+                SmallTopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = { nav.navigate("wifiConnect") }) {
+                            Icon(Icons.Default.Add, contentDescription = "添加设备")
+                        }
                     }
-                }
-            )
-        },
-        contentWindowInsets = WindowInsets(0)
-    ) { inner ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(inner)
-                .padding(bottom = 64.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            // ── 圆形大按钮 ────────────────────────
-            Surface(
+                )
+            },
+            contentWindowInsets = WindowInsets(0)
+        ) { inner ->
+            Box(
                 modifier = Modifier
-                    .size(220.dp)
-                    .shadow(8.dp, CircleShape),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                onClick = { showSheet = true }
+                    .fillMaxSize()
+                    .padding(inner)
+                    .padding(bottom = 64.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // ── 圆形大按钮 ────────────────────────
+                Surface(
+                    modifier = Modifier
+                        .size(220.dp)
+                        .shadow(8.dp, CircleShape),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    onClick = { showSheet = true }
                 ) {
-                    Icon(
-                        Icons.Default.FitnessCenter,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(80.dp)
-                            .rotate(135f),
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "开始运动",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.FitnessCenter,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .rotate(135f),
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "开始运动",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 }
             }
         }
-    }
 
-    // ── 覆盖 75% 高的 Bottom-Sheet ──────────────
-    if (showSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSheet = false },
-            sheetState = sheetState,
-            dragHandle = null,
-            modifier = Modifier.fillMaxHeight(0.75f)
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
+        // ── 覆盖 75% 高的 Bottom-Sheet ──────────────
+        if (showSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSheet = false },
+                sheetState = sheetState,
+                dragHandle = null,
+                modifier = Modifier.fillMaxHeight(0.75f)
             ) {
-                Text("训练模式 / 计数 / 选择动作 ……", style = MaterialTheme.typography.bodyLarge)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "训练模式 / 计数 / 选择动作 ……",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
             }
         }
     }

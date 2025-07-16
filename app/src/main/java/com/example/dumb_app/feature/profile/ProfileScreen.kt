@@ -71,90 +71,95 @@ fun ProfileScreen(navController: NavController) {
         }
 
     val age = Period.between(birthDate, LocalDate.now()).years
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background     // ← 用主题背景色
     ) {
-        Text("个人信息", style = MaterialTheme.typography.headlineMedium)
 
-        // 头像 & 用户名
-        Card(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clickable { navController.navigate("editUsername") },
-            shape = RoundedCornerShape(8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Text("个人信息", style = MaterialTheme.typography.headlineMedium)
+
+            // 头像 & 用户名
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate("editUsername") },
+                shape = RoundedCornerShape(8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Icon(
-                    Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(username, style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(username, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "点击修改用户名",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                }
+            }
+
+            // 身体数据
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate("editBodyData") },
+                shape = RoundedCornerShape(8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("身体数据", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("年龄：${age}岁", style = MaterialTheme.typography.bodyMedium)
+                        Text("性别：$gender", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("身高：${height}cm", style = MaterialTheme.typography.bodyMedium)
+                        Text("体重：${weight}kg", style = MaterialTheme.typography.bodyMedium)
+                    }
                     Text(
-                        "点击修改用户名",
+                        "点击查看/修改",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(Icons.Default.ChevronRight, contentDescription = null)
             }
-        }
 
-        // 身体数据
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { navController.navigate("editBodyData") },
-            shape = RoundedCornerShape(8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // 训练目标
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Text("身体数据", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("年龄：${age}岁", style = MaterialTheme.typography.bodyMedium)
-                    Text("性别：$gender", style = MaterialTheme.typography.bodyMedium)
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("训练目标：", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.width(8.dp))
+                    Text(goal, style = MaterialTheme.typography.bodyLarge)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("身高：${height}cm", style = MaterialTheme.typography.bodyMedium)
-                    Text("体重：${weight}kg", style = MaterialTheme.typography.bodyMedium)
-                }
-                Text(
-                    "点击查看/修改",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // 训练目标
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("训练目标：", style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.width(8.dp))
-                Text(goal, style = MaterialTheme.typography.bodyLarge)
             }
         }
     }

@@ -50,163 +50,168 @@ fun RecordScreen(navController: NavController) {
     val trainingPlans = remember { listOf("计划 A", "计划 B") }
     val trainingRecords = remember { listOf("第一次训练", "第二次训练") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background     // ← 用主题背景色
     ) {
-        // 日历头部
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
         ) {
-            Text(
-                "${selectedDate.year} / ${selectedDate.monthValue}",
-                style = MaterialTheme.typography.titleLarge
-            )
-            IconButton(onClick = { isWeekView = !isWeekView }) {
-                Icon(Icons.Default.ArrowDropDown, contentDescription = "切换视图")
-            }
-        }
-
-        // 周或月视图
-        if (isWeekView) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                items(generateWeekDates(selectedDate)) { date ->
-                    DateCell(
-                        date = date,
-                        isSelected = date == selectedDate,
-                        isToday = date == today,
-                        isTrained = trainingDates.contains(date)
-                    ) { selectedDate = date }
-                }
-            }
-        } else {
-            // 月视图星期标签
+            // 日历头部
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                DayOfWeek.values().forEach { dow ->
-                    Text(
-                        text = dow.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
-                        style = MaterialTheme.typography.bodySmall,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f)
-                    )
+                Text(
+                    "${selectedDate.year} / ${selectedDate.monthValue}",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                IconButton(onClick = { isWeekView = !isWeekView }) {
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = "切换视图")
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            // 月网格
-            val monthDates = generateMonthDates(selectedDate)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                monthDates.chunked(7).forEach { week ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        week.forEach { date ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f),
-                                contentAlignment = Alignment.TopCenter
-                            ) {
-                                DateCell(
-                                    date = date,
-                                    isSelected = date == selectedDate,
-                                    isToday = date == today,
-                                    isTrained = trainingDates.contains(date),
-                                    showWeekDay = false
-                                ) { selectedDate = date }
+
+            // 周或月视图
+            if (isWeekView) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    items(generateWeekDates(selectedDate)) { date ->
+                        DateCell(
+                            date = date,
+                            isSelected = date == selectedDate,
+                            isToday = date == today,
+                            isTrained = trainingDates.contains(date)
+                        ) { selectedDate = date }
+                    }
+                }
+            } else {
+                // 月视图星期标签
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    DayOfWeek.values().forEach { dow ->
+                        Text(
+                            text = dow.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                // 月网格
+                val monthDates = generateMonthDates(selectedDate)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    monthDates.chunked(7).forEach { week ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            week.forEach { date ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f),
+                                    contentAlignment = Alignment.TopCenter
+                                ) {
+                                    DateCell(
+                                        date = date,
+                                        isSelected = date == selectedDate,
+                                        isToday = date == today,
+                                        isTrained = trainingDates.contains(date),
+                                        showWeekDay = false
+                                    ) { selectedDate = date }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        Spacer(Modifier.height(16.dp))
-        Divider()
+            Spacer(Modifier.height(16.dp))
+            Divider()
 
-        // ——— 训练计划 ———
-        Text(
-            text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练计划",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            textAlign = TextAlign.Center
-        )
-        Column {
-            trainingPlans.forEach { plan ->
-                ListItem(
-                    modifier = Modifier.clickable {
-                        currentPlan = plan
-                        showPlanSheet = true
-                    },
-                    headlineContent = { Text(plan) },
-                    trailingContent = {
-                        Icon(Icons.Default.ArrowForward, contentDescription = null)
-                    }
-                )
-                Divider()
+            // ——— 训练计划 ———
+            Text(
+                text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练计划",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                textAlign = TextAlign.Center
+            )
+            Column {
+                trainingPlans.forEach { plan ->
+                    ListItem(
+                        modifier = Modifier.clickable {
+                            currentPlan = plan
+                            showPlanSheet = true
+                        },
+                        headlineContent = { Text(plan) },
+                        trailingContent = {
+                            Icon(Icons.Default.ArrowForward, contentDescription = null)
+                        }
+                    )
+                    Divider()
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // ——— 训练记录 ———
+            Text(
+                text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练记录",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                textAlign = TextAlign.Center
+            )
+            Column {
+                trainingRecords.forEach { record ->
+                    ListItem(
+                        modifier = Modifier.clickable {
+                            navController.navigate("TrainingRecordDetail")
+                        },
+                        headlineContent = { Text(record) },
+                        trailingContent = {
+                            Icon(Icons.Default.ArrowForward, contentDescription = null)
+                        }
+                    )
+                    Divider()
+                }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        // ——— 训练记录 ———
-        Text(
-            text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练记录",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            textAlign = TextAlign.Center
-        )
-        Column {
-            trainingRecords.forEach { record ->
-                ListItem(
-                    modifier = Modifier.clickable {
-                        navController.navigate("TrainingRecordDetail")
-                    },
-                    headlineContent = { Text(record) },
-                    trailingContent = {
-                        Icon(Icons.Default.ArrowForward, contentDescription = null)
-                    }
-                )
-                Divider()
-            }
-        }
-    }
-
-    // ── 覆盖 75% 高的 Bottom-Sheet ──────────────
-    if (showPlanSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showPlanSheet = false },
-            sheetState = planSheetState,
-            dragHandle = null,
-            modifier = Modifier.fillMaxHeight(0.75f)
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
+        // ── 覆盖 75% 高的 Bottom-Sheet ──────────────
+        if (showPlanSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showPlanSheet = false },
+                sheetState = planSheetState,
+                dragHandle = null,
+                modifier = Modifier.fillMaxHeight(0.75f)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(16.dp)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("训练计划详情", style = MaterialTheme.typography.headlineSmall)
-                    Text(currentPlan, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { showPlanSheet = false }) {
-                        Text("关闭")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text("训练计划详情", style = MaterialTheme.typography.headlineSmall)
+                        Text(currentPlan, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = { showPlanSheet = false }) {
+                            Text("关闭")
+                        }
                     }
                 }
             }
