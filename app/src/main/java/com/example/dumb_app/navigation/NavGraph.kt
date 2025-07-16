@@ -10,9 +10,11 @@ import androidx.navigation.compose.rememberNavController
 import com.example.dumb_app.feature.workout.WorkoutScreen
 import com.example.dumb_app.feature.workout.WifiConnectScreen
 import com.example.dumb_app.feature.record.RecordScreen
+import com.example.dumb_app.feature.record.TrainingRecordDetailScreen
 import com.example.dumb_app.feature.profile.ProfileScreen
 import com.example.dumb_app.feature.profile.EditBodyDataScreen
 import com.example.dumb_app.feature.profile.EditUsernameScreen
+import com.example.dumb_app.feature.record.TrainingRecordDetailScreen
 
 @Composable
 fun NavGraph(
@@ -47,7 +49,10 @@ fun NavGraph(
         composable("editBodyData") {
             EditBodyDataScreen(navController)
         }
-
+        // 训练记录详情
+        composable("TrainingRecordDetail") {
+            TrainingRecordDetailScreen(navController)
+        }
 
     }
 }

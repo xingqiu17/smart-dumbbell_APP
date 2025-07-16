@@ -171,7 +171,7 @@ fun RecordScreen(navController: NavController) {
             trainingRecords.forEach { record ->
                 ListItem(
                     modifier = Modifier.clickable {
-                        navController.navigate("recordDetail")
+                        navController.navigate("TrainingRecordDetail")
                     },
                     headlineContent = { Text(record) },
                     trailingContent = {
