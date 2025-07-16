@@ -1,4 +1,3 @@
-// 文件路径：
 // app/src/main/java/com/example/dumb_app/navigation/NavGraph.kt
 
 package com.example.dumb_app.navigation
@@ -23,24 +22,32 @@ fun NavGraph(
         navController = navController,
         startDestination = "workout"
     ) {
+        // 运动主界面
         composable("workout") {
             WorkoutScreen(navController)
         }
+        // 记录主界面
         composable("record") {
             RecordScreen(navController)
         }
+        // 个人主界面
         composable("profile") {
             ProfileScreen(navController)
         }
+        // Wi-Fi 连接占位界面
         composable("wifiConnect") {
             WifiConnectScreen(navController)
         }
+
+        // 编辑用户名
         composable("editUsername") {
             EditUsernameScreen(navController)
         }
-        // 新增编辑身体数据页面
+        // 编辑身体数据
         composable("editBodyData") {
             EditBodyDataScreen(navController)
         }
+
+
     }
 }
