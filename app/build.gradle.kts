@@ -53,7 +53,12 @@ dependencies {
     implementation(libs.material.icons.extended)
     implementation(libs.coil.compose)
     implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)      // 或 moshi
     implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+
+    // -------- 协程 -----------
+    implementation(libs.coroutines.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

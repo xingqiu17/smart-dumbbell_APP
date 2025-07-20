@@ -14,15 +14,19 @@ import com.example.dumb_app.feature.record.TrainingRecordDetailScreen
 import com.example.dumb_app.feature.profile.ProfileScreen
 import com.example.dumb_app.feature.profile.EditBodyDataScreen
 import com.example.dumb_app.feature.profile.EditUsernameScreen
-import com.example.dumb_app.feature.record.TrainingRecordDetailScreen
+import com.example.dumb_app.feature.auth.LoginScreen
+import com.example.dumb_app.feature.auth.RegisterScreen
 
 @Composable
 fun NavGraph(
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController
 ) {
+
+    val firstRoute = if (/* 已登录？ */ false) "workout" else "login"
+
     NavHost(
         navController = navController,
-        startDestination = "workout"
+        startDestination = firstRoute
     ) {
         // 运动主界面
         composable("workout") {
@@ -53,6 +57,9 @@ fun NavGraph(
         composable("TrainingRecordDetail") {
             TrainingRecordDetailScreen(navController)
         }
+
+        composable("login")    { LoginScreen(navController) }
+        composable("register") { RegisterScreen(navController) }
 
     }
 }

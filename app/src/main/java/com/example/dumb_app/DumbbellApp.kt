@@ -23,16 +23,23 @@ fun DumbbellApp() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: "workout"
 
+    // 判断是否为登录或注册界面
+    val noBottomBarRoutes = listOf("login", "register")
+    val showBottomBar = currentRoute !in noBottomBarRoutes
+
     Scaffold(
         bottomBar = {
-            BottomNavigationBar(selected = currentRoute) { destination ->
-                if (destination != currentRoute) {
-                    navController.navigate(destination) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
+            // 如果当前路由不是登录或注册，则显示底部导航栏
+            if (showBottomBar) {
+                BottomNavigationBar(selected = currentRoute) { destination ->
+                    if (destination != currentRoute) {
+                        navController.navigate(destination) {
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
                 }
             }
