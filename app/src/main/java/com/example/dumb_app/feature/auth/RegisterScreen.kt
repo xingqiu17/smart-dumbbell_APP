@@ -2,43 +2,38 @@ package com.example.dumb_app.feature.auth
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.*
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.example.dumb_app.ui.theme.Theme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(navController: NavController) {
-    // RegisterViewModel 初始化
+    /* ---------- ViewModel ---------- */
     val viewModel = remember { RegisterViewModel() }
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState  by viewModel.uiState.collectAsState()
 
-    var account by remember { mutableStateOf(TextFieldValue("")) }
-    var password by remember { mutableStateOf(TextFieldValue("")) }
+    /* ---------- 本地状态 ---------- */
+    var account         by remember { mutableStateOf(TextFieldValue("")) }
+    var password        by remember { mutableStateOf(TextFieldValue("")) }
     var confirmPassword by remember { mutableStateOf(TextFieldValue("")) }
-    var isRegisterEnabled by remember { mutableStateOf(false) }
+    val isRegisterEnabled = account.text.isNotEmpty() &&
+            password.text.isNotEmpty() &&
+            password.text == confirmPassword.text
 
-    LaunchedEffect(account, password, confirmPassword) {
-        isRegisterEnabled = account.text.isNotEmpty() && password.text.isNotEmpty() && confirmPassword.text == password.text
-    }
-
-    // UI 状态变化：加载、成功、错误
+    /* ---------- 状态监听 ---------- */
     when (uiState) {
         is UiState.Loading -> {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         }
         is UiState.Success -> {
-            // 注册成功后跳转到编辑个人信息界面
             LaunchedEffect(Unit) {
                 navController.navigate("editBodyData") {
                     popUpTo("register") { inclusive = true }
@@ -46,73 +41,75 @@ fun RegisterScreen(navController: NavController) {
             }
         }
         is UiState.Error -> {
-            Text(text = "注册失败: ${(uiState as UiState.Error).msg}", color = MaterialTheme.colorScheme.error)
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "注册失败: ${(uiState as UiState.Error).msg}",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
+        UiState.Idle -> { /* 初始什么都不画 */ }
     }
 
+    /* ---------- UI ---------- */
     Scaffold(
-        topBar = {
-            SmallTopAppBar(
-                title = { Text("注册") }
-            )
-        },
+        topBar = { TopAppBar(title = { Text("注册") }) },
         contentWindowInsets = WindowInsets(0)
-    ) { innerPadding ->
+    ) { inner ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(inner)
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium)
+                    .background(
+                        color  = MaterialTheme.colorScheme.surface,
+                        shape  = MaterialTheme.shapes.medium
+                    )
                     .padding(24.dp)
             ) {
                 TextField(
-                    value = account,
+                    value       = account,
                     onValueChange = { account = it },
-                    label = { Text("账号") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    label         = { Text("账号") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
                 TextField(
-                    value = password,
+                    value       = password,
                     onValueChange = { password = it },
-                    label = { Text("密码") },
+                    label         = { Text("密码") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
                 TextField(
-                    value = confirmPassword,
+                    value       = confirmPassword,
                     onValueChange = { confirmPassword = it },
-                    label = { Text("确认密码") },
+                    label         = { Text("确认密码") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(24.dp))
 
                 Button(
-                    onClick = { viewModel.register(account.text, password.text) },  // 调用 ViewModel 注册
-                    enabled = isRegisterEnabled,
+                    onClick  = { viewModel.register(account.text, password.text) },
+                    enabled  = isRegisterEnabled,
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("注册")
-                }
+                ) { Text("注册") }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-                TextButton(
-                    onClick = { navController.navigate("login") }
-                ) {
+                TextButton(onClick = { navController.navigate("login") }) {
                     Text("已有账号？去登录")
                 }
             }

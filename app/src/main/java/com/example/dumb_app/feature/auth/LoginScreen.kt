@@ -16,71 +16,87 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.navigation.NavController
 import com.example.dumb_app.ui.component.BottomNavigationBar
 
+// ✓ 最终版  —— app/feature/auth/LoginScreen.kt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(navController: NavController) {
+
+    // ① ViewModel
+    val vm = remember { LoginViewModel() }
+    val uiState by vm.uiState.collectAsState()
+
+    // ② 输入框状态
     var account by remember { mutableStateOf(TextFieldValue("")) }
     var password by remember { mutableStateOf(TextFieldValue("")) }
-    var isLoginEnabled by remember { mutableStateOf(false) }
+    val canLogin = account.text.length == 11 && password.text.length in 6..16
 
-    LaunchedEffect(account, password) {
-        isLoginEnabled = account.text.isNotEmpty() && password.text.isNotEmpty()
+    // ③ 登录成功 → 跳首页
+    LaunchedEffect(uiState) {
+        if (uiState is UiState.Success) {
+            navController.navigate("workout") {
+                popUpTo("login") { inclusive = true }
+            }
+        }
     }
 
     Scaffold(
-        topBar = {
-            SmallTopAppBar(
-                title = { Text("登录") }
-            )
-        },
+        topBar = { SmallTopAppBar(title = { Text("登录") }) },
         contentWindowInsets = WindowInsets(0)
-    ) { innerPadding ->
+    ) { inner ->
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(inner)
                 .padding(16.dp),
-            contentAlignment = Alignment.Center
+            Alignment.Center
         ) {
             Column(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium)
+                    .background(
+                        MaterialTheme.colorScheme.surface,
+                        shape = MaterialTheme.shapes.medium
+                    )
                     .padding(24.dp)
             ) {
                 TextField(
                     value = account,
                     onValueChange = { account = it },
-                    label = { Text("账号") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    label = { Text("手机号") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-
+                Spacer(Modifier.height(16.dp))
                 TextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("密码") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(24.dp))
 
                 Button(
-                    onClick = { /* 登录逻辑 */ },
-                    enabled = isLoginEnabled,
+                    onClick = { vm.login(account.text, password.text) },
+                    enabled = canLogin,
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("登录")
+                ) { Text("登录") }
+
+                Spacer(Modifier.height(8.dp))
+
+                TextButton(onClick = { navController.navigate("register") }) {
+                    Text("没有账号？去注册")
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextButton(
-                    onClick = { navController.navigate("register") }
-                ) {
-                    Text("没有账号？去注册")
+                // ④ 状态提示
+                when (uiState) {
+                    is UiState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    is UiState.Error   -> Text(
+                        (uiState as UiState.Error).msg,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    else -> {}
                 }
             }
         }
