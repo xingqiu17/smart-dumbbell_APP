@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dumb_app.core.util.ServiceLocator
 import com.example.dumb_app.core.util.PasswordUtil
+import com.example.dumb_app.core.util.UserSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -24,6 +25,7 @@ class LoginViewModel(
                 repo.login(account, rawPwd)         // repo 自己会做加盐 MD5
             }.onSuccess {
                 _uiState.value = UiState.Success(it.id)
+                UserSession.update(it)
             }.onFailure {
                 _uiState.value = UiState.Error("账号或密码错误")
             }

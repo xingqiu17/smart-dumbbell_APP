@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.get
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import java.time.LocalDate
@@ -32,9 +31,12 @@ fun ProfileScreen(navController: NavController) {
     var username by remember { mutableStateOf("张三") }
     var birthDate by remember { mutableStateOf(LocalDate.of(1990, 1, 1)) }
     var gender by remember { mutableStateOf("男") }
-    var height by remember { mutableStateOf(175) }  // cm
-    var weight by remember { mutableStateOf(65) }   // kg
-    var goal by remember { mutableStateOf("增肌") }
+    var height by remember { mutableStateOf(175) }    // cm
+    var weight by remember { mutableStateOf(65) }     // kg
+
+    // 训练数据状态：目标 + 配重
+    var goal by remember { mutableStateOf("无目标") }
+    var trainWeight by remember { mutableStateOf(0f) }
 
     // 从 editUsername 回传
     handle
@@ -70,12 +72,34 @@ fun ProfileScreen(navController: NavController) {
             handle.remove<String>("gender")
         }
 
+    // 从 EditTrainDataScreen 回传训练目标与配重
+    handle
+        ?.getLiveData<Int>("aim")
+        ?.observe(backStackEntry!!) { newAim ->
+            goal = when (newAim) {
+                1 -> "手臂"
+                2 -> "肩部"
+                3 -> "胸部"
+                4 -> "背部"
+                5 -> "腿部"
+                else -> "无目标"
+            }
+            handle.remove<Int>("aim")
+        }
+    handle
+        ?.getLiveData<Float>("trainWeight")
+        ?.observe(backStackEntry!!) { newW ->
+            trainWeight = newW
+            handle.remove<Float>("trainWeight")
+        }
+
+    // 计算年龄
     val age = Period.between(birthDate, LocalDate.now()).years
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background     // ← 用主题背景色
+        color = MaterialTheme.colorScheme.background
     ) {
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -146,19 +170,30 @@ fun ProfileScreen(navController: NavController) {
                 }
             }
 
-            // 训练目标
+            // 训练数据
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate("editTrainData") },
                 shape = RoundedCornerShape(8.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Row(
+                Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("训练目标：", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.width(8.dp))
-                    Text(goal, style = MaterialTheme.typography.bodyLarge)
+                    Text("训练目标：$goal", style = MaterialTheme.typography.bodyLarge)
+                    Text("训练配重：${trainWeight}kg", style = MaterialTheme.typography.bodyLarge)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = "查看/修改",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

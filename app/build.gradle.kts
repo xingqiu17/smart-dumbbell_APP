@@ -56,6 +56,8 @@ dependencies {
     implementation(libs.retrofit.converter.gson)      // 或 moshi
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    implementation(libs.androidx.foundation)
+    implementation(libs.androidx.ui.text)
 
     // -------- 协程 -----------
     implementation(libs.coroutines.android)

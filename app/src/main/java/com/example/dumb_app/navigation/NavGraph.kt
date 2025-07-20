@@ -14,6 +14,7 @@ import com.example.dumb_app.feature.record.TrainingRecordDetailScreen
 import com.example.dumb_app.feature.profile.ProfileScreen
 import com.example.dumb_app.feature.profile.EditBodyDataScreen
 import com.example.dumb_app.feature.profile.EditUsernameScreen
+import com.example.dumb_app.feature.profile.EditTrainDataScreen
 import com.example.dumb_app.feature.auth.LoginScreen
 import com.example.dumb_app.feature.auth.RegisterScreen
 
@@ -60,6 +61,7 @@ fun NavGraph(
 
         composable("login")    { LoginScreen(navController) }
         composable("register") { RegisterScreen(navController) }
+        composable("EditTrainData") { EditTrainDataScreen(navController) }
 
     }
 }

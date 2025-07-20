@@ -13,6 +13,7 @@ coil_compose = "2.2.2"
 gsonConv     = "2.9.0"     # Retrofit Gson 转换器
 coroutines   = "1.9.0"     # Kotlin 协程
 okhttp      = "4.12.0"
+compose = "1.4.3"    # 或者和 bom 里保持同一个版本
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,6 +43,12 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 
 # --- 协程 Android 支持 ---
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Compose Foundation（Row/Column/clickable/...）
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "compose" }
+
+# Compose 文本输入支持（KeyboardOptions/KeyboardType 等）
+androidx-ui-text = { group = "androidx.compose.ui", name = "ui-text" }
 
 
 [plugins]

@@ -3,6 +3,7 @@ package com.example.dumb_app.feature.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dumb_app.core.util.ServiceLocator
+import com.example.dumb_app.core.util.UserSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -26,7 +27,9 @@ class RegisterViewModel(
         viewModelScope.launch {
             _uiState.value = UiState.Loading
             runCatching { repo.register(account, password) }
-                .onSuccess { _uiState.value = UiState.Success(it.id) }
+                .onSuccess {
+                    _uiState.value = UiState.Success(it.id)
+                    UserSession.update(it)}
                 .onFailure { _uiState.value = UiState.Error(it.message ?: "注册失败") }
         }
     }
