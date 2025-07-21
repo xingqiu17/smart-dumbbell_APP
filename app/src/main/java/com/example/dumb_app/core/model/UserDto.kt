@@ -11,5 +11,6 @@ data class UserDto(
     val weight: Float,
     val birthday: String,
     val aim: Int,
-    val hwId: Int
+    val hwId: Int,
+    val hwWeight: Float
 )

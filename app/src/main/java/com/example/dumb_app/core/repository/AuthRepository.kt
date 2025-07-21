@@ -13,7 +13,7 @@ class AuthRepository(
     suspend fun register(account: String, rawPwd: String): UserDto {
         val md5 = PasswordUtil.md5WithSalt(rawPwd, "dumb")
         val user = api.register(RegisterReq(account = account, password = md5))
-        UserSession.update(user)                 // ← 缓存
+        UserSession.update(user)
         return user
     }
 
@@ -21,14 +21,39 @@ class AuthRepository(
     suspend fun login(account: String, rawPwd: String): UserDto {
         val md5 = PasswordUtil.md5WithSalt(rawPwd, "dumb")
         val user = api.login(LoginReq(account, md5))
-        UserSession.update(user)                 // ← 缓存
+        UserSession.update(user)
         return user
     }
 
     /** 更新训练数据：直接用缓存里的 uid */
-    suspend fun updateTrainData(aim: Int, weight: Float): UserDto {
-        val uid = UserSession.uid                   // ← 这里拿到真正 id
-        val req = TrainDataReq(aim, weight)
-        return api.updateTrainData(uid, req)        // ← POST /users/{uid}/trainData
+    suspend fun updateTrainData(aim: Int, hwWeight: Float): UserDto {
+        val uid = UserSession.uid
+        val req = TrainDataReq(aim, hwWeight)
+        val updated = api.updateTrainData(uid, req)
+        UserSession.update(updated)
+        return updated
+    }
+
+    /** 更新用户名 */
+    suspend fun updateName(newName: String): UserDto {
+        val uid = UserSession.uid
+        val req = UpdateNameReq(name = newName)
+        val updated = api.updateName(uid, req)
+        UserSession.update(updated)
+        return updated
+    }
+
+    /** 更新身体数据 */
+    suspend fun updateBodyData(birthday: String, height: Float, weight: Float, gender: Int): UserDto {
+        val uid = UserSession.uid
+        val req = BodyDataReq(
+            birthday = birthday,
+            height   = height,
+            weight   = weight,
+            gender   = gender
+        )
+        val updated = api.updateBodyData(uid, req)
+        UserSession.update(updated)
+        return updated
     }
 }

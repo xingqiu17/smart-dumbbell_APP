@@ -1,5 +1,4 @@
 // app/src/main/java/com/example/dumb_app/feature/profile/ProfileScreen.kt
-
 package com.example.dumb_app.feature.profile
 
 import androidx.compose.foundation.clickable
@@ -17,119 +16,125 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.dumb_app.core.util.UserSession
 import java.time.LocalDate
 import java.time.Period
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavController) {
-    // 监听当前 NavBackStackEntry，以取回 savedStateHandle
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val handle = backStackEntry?.savedStateHandle
 
-    // 本地状态
-    var username by remember { mutableStateOf("张三") }
-    var birthDate by remember { mutableStateOf(LocalDate.of(1990, 1, 1)) }
-    var gender by remember { mutableStateOf("男") }
-    var height by remember { mutableStateOf(175) }    // cm
-    var weight by remember { mutableStateOf(65) }     // kg
+    /* ---------- Nav & Saved-State ---------- */
+    val backEntry by navController.currentBackStackEntryAsState()
+    val handle    = backEntry?.savedStateHandle
 
-    // 训练数据状态：目标 + 配重
-    var goal by remember { mutableStateOf("无目标") }
-    var trainWeight by remember { mutableStateOf(0f) }
+    /* ---------- 初始值：来自 UserSession ---------- */
+    val user      = UserSession.currentUser
+    var username  by remember { mutableStateOf(user?.name ?: "张三") }
+    var birthDate by remember {
+        mutableStateOf(
+            user?.birthday?.let { LocalDate.parse(it) }    // UserDto.birthday 是字符串
+                ?: LocalDate.of(1990, 1, 1)
+        )
+    }
+    var gender by remember {
+        mutableStateOf(
+            when (user?.gender) {
+                0    -> "不便透露"
+                1    -> "男"
+                2    -> "女"
+                else -> "不便透露"
+            }
+        )
+    }
+    var height    by remember { mutableStateOf(user?.height?.toInt() ?: 175) }    // cm
+    var weight    by remember { mutableStateOf(user?.weight?.toInt() ?: 65) }     // kg
 
-    // 从 editUsername 回传
-    handle
-        ?.getLiveData<String>("username")
-        ?.observe(backStackEntry!!) { newUsername ->
-            username = newUsername
+    /* 训练数据 */
+    var goal        by remember { mutableStateOf(aimIntToStr(user?.aim ?: 0)) }
+    var trainWeight by remember { mutableStateOf(user?.hwWeight ?: 0f) }
+
+    /* ---------- 监听回传 ---------- */
+    // 用户名
+    handle?.getLiveData<String>("username")
+        ?.observe(backEntry!!) {
+            username = it
             handle.remove<String>("username")
         }
 
-    // 从 editBodyData 回传出生日期、身高、体重、性别
-    handle
-        ?.getLiveData<String>("birthDate")
-        ?.observe(backStackEntry!!) { bdString ->
-            bdString?.let { birthDate = LocalDate.parse(it) }
+    // 出生日期 / 身高 / 体重 / 性别
+    handle?.getLiveData<String>("birthDate")
+        ?.observe(backEntry!!) {
+            birthDate = LocalDate.parse(it)
             handle.remove<String>("birthDate")
         }
-    handle
-        ?.getLiveData<Int>("height")
-        ?.observe(backStackEntry!!) { newHeight ->
-            height = newHeight
+
+    handle?.getLiveData<Int>("height")
+        ?.observe(backEntry!!) {
+            height = it
             handle.remove<Int>("height")
         }
-    handle
-        ?.getLiveData<Int>("weight")
-        ?.observe(backStackEntry!!) { newWeight ->
-            weight = newWeight
+    handle?.getLiveData<Int>("weight")
+        ?.observe(backEntry!!) {
+            weight = it
             handle.remove<Int>("weight")
         }
-    handle
-        ?.getLiveData<String>("gender")
-        ?.observe(backStackEntry!!) { newGender ->
-            gender = newGender
+    handle?.getLiveData<String>("gender")
+        ?.observe(backEntry!!) {
+            gender = it
             handle.remove<String>("gender")
         }
 
-    // 从 EditTrainDataScreen 回传训练目标与配重
-    handle
-        ?.getLiveData<Int>("aim")
-        ?.observe(backStackEntry!!) { newAim ->
-            goal = when (newAim) {
-                1 -> "手臂"
-                2 -> "肩部"
-                3 -> "胸部"
-                4 -> "背部"
-                5 -> "腿部"
-                else -> "无目标"
-            }
+    // 训练数据
+    handle?.getLiveData<Int>("aim")
+        ?.observe(backEntry!!) {
+            goal = aimIntToStr(it)
             handle.remove<Int>("aim")
         }
-    handle
-        ?.getLiveData<Float>("trainWeight")
-        ?.observe(backStackEntry!!) { newW ->
-            trainWeight = newW
+    handle?.getLiveData<Float>("trainWeight")
+        ?.observe(backEntry!!) {
+            trainWeight = it
             handle.remove<Float>("trainWeight")
         }
 
-    // 计算年龄
-    val age = Period.between(birthDate, LocalDate.now()).years
+    /* ---------- UI ---------- */
+    val age = Period.between(birthDate, LocalDate.now()).years   // ← 去掉错误的强转
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
             Text("个人信息", style = MaterialTheme.typography.headlineMedium)
 
-            // 头像 & 用户名
+            /* --- 头像 & 用户名 --- */
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { navController.navigate("editUsername") },
                 shape = RoundedCornerShape(8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                elevation = CardDefaults.cardElevation(4.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Default.AccountCircle,
-                        contentDescription = null,
-                        modifier = Modifier
+                        null,
+                        Modifier
                             .size(48.dp)
                             .clip(CircleShape),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f)) {
                         Text(username, style = MaterialTheme.typography.titleMedium)
                         Text(
                             "点击修改用户名",
@@ -137,20 +142,20 @@ fun ProfileScreen(navController: NavController) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                    Icon(Icons.Default.ChevronRight, null)
                 }
             }
 
-            // 身体数据
+            /* --- 身体数据 --- */
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { navController.navigate("editBodyData") },
                 shape = RoundedCornerShape(8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                elevation = CardDefaults.cardElevation(4.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text("身体数据", style = MaterialTheme.typography.titleMedium)
@@ -170,27 +175,30 @@ fun ProfileScreen(navController: NavController) {
                 }
             }
 
-            // 训练数据
+            /* --- 训练数据 --- */
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { navController.navigate("editTrainData") },
                 shape = RoundedCornerShape(8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                elevation = CardDefaults.cardElevation(4.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text("训练目标：$goal", style = MaterialTheme.typography.bodyLarge)
-                    Text("训练配重：${trainWeight}kg", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "训练配重：${"%.1f".format(trainWeight)} kg",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
                         Icon(
                             Icons.Default.ChevronRight,
-                            contentDescription = "查看/修改",
+                            null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -198,4 +206,14 @@ fun ProfileScreen(navController: NavController) {
             }
         }
     }
+}
+
+/* aim 枚举 → 中文描述 */
+private fun aimIntToStr(code: Int): String = when (code) {
+    1    -> "手臂"
+    2    -> "肩部"
+    3    -> "胸部"
+    4    -> "背部"
+    5    -> "腿部"
+    else -> "无目标"
 }

@@ -4,6 +4,8 @@ import com.example.dumb_app.core.model.LoginReq
 import com.example.dumb_app.core.model.RegisterReq
 import com.example.dumb_app.core.model.UserDto
 import com.example.dumb_app.core.model.TrainDataReq
+import com.example.dumb_app.core.model.UpdateNameReq
+import com.example.dumb_app.core.model.BodyDataReq
 import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.PATCH
@@ -30,6 +32,20 @@ interface ApiService {
     suspend fun updateTrainData(
         @Path("id") id: Int,
         @Body req: TrainDataReq
+    ): UserDto
+
+    /** 修改用户名 */
+    @POST("v1/users/{id}/name")
+    suspend fun updateName(
+        @Path("id") id: Int,
+        @Body req: UpdateNameReq
+    ): UserDto
+
+    /** 修改身体数据：出生日期、身高、体重、性别 */
+    @POST("v1/users/{id}/body")
+    suspend fun updateBodyData(
+        @Path("id") id: Int,
+        @Body req: BodyDataReq
     ): UserDto
 
     // 后面可以按需继续添加：上传训练记录、查询计划等接口

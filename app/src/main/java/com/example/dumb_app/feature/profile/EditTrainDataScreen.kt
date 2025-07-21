@@ -8,20 +8,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.dumb_app.core.util.UserSession      // ← 新增
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditTrainDataScreen(navController: NavController) {
 
-    // ↓ 本地状态
-    var targetExpanded by remember { mutableStateOf(false) }
-    var target by remember { mutableStateOf("无目标") }
-    val viewModel: EditTrainDataViewModel = remember { EditTrainDataViewModel() }
+    /* ---------- 读取当前用户的已有训练数据 ---------- */
+    val user = UserSession.currentUser
+    val initAimStr   = aimIntToStr(user?.aim ?: 0)
+    val initWeight   = user?.hwWeight?.takeIf { it > 0f }?.toString().orEmpty()
 
-    var weightInput by remember { mutableStateOf("") }   // 文本框原始值
+    /* ---------- 本地状态 ---------- */
+    var targetExpanded by remember { mutableStateOf(false) }
+    var target         by remember { mutableStateOf(initAimStr) }    // ← 用已有值初始化
+    var weightInput    by remember { mutableStateOf(initWeight) }    // ← 用已有值初始化
+
+    val viewModel: EditTrainDataViewModel = remember { EditTrainDataViewModel() }
     val isValidWeight = weightInput.matches(Regex("""\d*\.?\d*"""))
 
     Scaffold(
@@ -36,9 +41,8 @@ fun EditTrainDataScreen(navController: NavController) {
             )
         }
     ) { innerPadding ->
-
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(16.dp),
@@ -51,14 +55,14 @@ fun EditTrainDataScreen(navController: NavController) {
                 onExpandedChange = { targetExpanded = !targetExpanded }
             ) {
                 OutlinedTextField(
-                    readOnly = true,
                     value = target,
+                    readOnly = true,
                     onValueChange = {},
                     label = { Text("训练目标") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(targetExpanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = targetExpanded)
+                    },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = targetExpanded,
@@ -67,10 +71,7 @@ fun EditTrainDataScreen(navController: NavController) {
                     listOf("无目标", "手臂", "肩部", "胸部", "背部", "腿部").forEach {
                         DropdownMenuItem(
                             text = { Text(it) },
-                            onClick = {
-                                target = it
-                                targetExpanded = false
-                            }
+                            onClick = { target = it; targetExpanded = false }
                         )
                     }
                 }
@@ -80,15 +81,12 @@ fun EditTrainDataScreen(navController: NavController) {
             OutlinedTextField(
                 value = weightInput,
                 onValueChange = { new ->
-                    // 只接受数字或单个小数点
-                    if (new.matches(Regex("""\d*\.?\d*"""))) {
-                        weightInput = new
-                    }
+                    if (new.matches(Regex("""\d*\.?\d*"""))) weightInput = new
                 },
                 label = { Text("训练配重 (kg)") },
                 placeholder = { Text("例如 12.5") },
-                isError = !isValidWeight,
                 singleLine = true,
+                isError = !isValidWeight,
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -97,9 +95,15 @@ fun EditTrainDataScreen(navController: NavController) {
             /* ───────── 保存按钮 ───────── */
             val uiState by viewModel.uiState.collectAsState()
 
-            // ① 监听保存成功 ➜ 退出页面
             LaunchedEffect(uiState) {
                 if (uiState is TrainUiState.Success) {
+                    val aimCode = targetToCode(target)
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.apply {
+                            set("aim",         aimCode)
+                            set("trainWeight", weightInput.toFloatOrNull() ?: 0f)
+                        }
                     navController.popBackStack()
                 }
             }
@@ -107,26 +111,32 @@ fun EditTrainDataScreen(navController: NavController) {
             Button(
                 enabled = isValidWeight && uiState !is TrainUiState.Loading,
                 onClick = {
-                    val aimCode = when (target) {
-                        "手臂" -> 1; "肩部" -> 2; "胸部" -> 3; "背部" -> 4; "腿部" -> 5
-                        else  -> 0
-                    }
-                    val weight = weightInput.toFloatOrNull() ?: 0f
-                    viewModel.submit(aimCode, weight)   // ← 现在不传 uid
+                    val aimCode = targetToCode(target)
+                    val weight  = weightInput.toFloatOrNull() ?: 0f
+                    viewModel.submit(aimCode, weight)
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {
                 if (uiState is TrainUiState.Loading) {
                     CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .padding(end = 8.dp),
+                        Modifier.size(18.dp).padding(end = 8.dp),
                         strokeWidth = 2.dp
                     )
                 }
                 Text("保存")
             }
-
         }
     }
+}
+
+/* 把中文目标映射为后端枚举 Int */
+private fun targetToCode(t: String): Int = when (t) {
+    "手臂" -> 1; "肩部" -> 2; "胸部" -> 3; "背部" -> 4; "腿部" -> 5
+    else   -> 0
+}
+
+/* aim Int → 中文，用于初始化 */
+private fun aimIntToStr(code: Int): String = when (code) {
+    1 -> "手臂"; 2 -> "肩部"; 3 -> "胸部"; 4 -> "背部"; 5 -> "腿部"
+    else -> "无目标"
 }
