@@ -6,10 +6,15 @@ import com.example.dumb_app.core.model.UserDto
 import com.example.dumb_app.core.model.TrainDataReq
 import com.example.dumb_app.core.model.UpdateNameReq
 import com.example.dumb_app.core.model.BodyDataReq
+import com.example.dumb_app.core.model.PlanItemDto
+import com.example.dumb_app.core.model.PlanDayCreateDto
+import com.example.dumb_app.core.model.PlanDayDto
 import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.PATCH
 import retrofit2.http.Path
+import retrofit2.http.GET
+import retrofit2.http.Query
 
 /**
  * 定义后端 HTTP 接口。
@@ -47,6 +52,25 @@ interface ApiService {
         @Path("id") id: Int,
         @Body req: BodyDataReq
     ): UserDto
+
+    /** 查询【用户 + 日期】的一天完整训练计划（头 + 明细） */
+    @GET("plan/session/day")
+    suspend fun getDayPlan(
+        @Query("userId") userId: Int,
+        @Query("date")   date:   String        // yyyy-MM-dd
+    ): PlanDayDto
+
+    /** 创建 / 覆盖某天的训练计划 */
+    @POST("plan/session")
+    suspend fun createDayPlan(
+        @Body req: PlanDayCreateDto
+    ): PlanDayDto
+
+    /** 仅按 sessionId 拉取动作明细（如果 getDayPlan 已含明细，可不必再调） */
+    @GET("plan/item/list")
+    suspend fun listItemsBySession(
+        @Query("sessionId") sessionId: Int
+    ): List<PlanItemDto>
 
     // 后面可以按需继续添加：上传训练记录、查询计划等接口
 }
