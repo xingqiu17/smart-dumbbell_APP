@@ -3,8 +3,10 @@ package com.example.dumb_app.feature.record
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +25,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.dumb_app.core.model.PlanDayDto
+import com.example.dumb_app.core.model.PlanItemDto
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -40,31 +44,28 @@ fun RecordScreen(
     val today = LocalDate.now()
     var selectedDate by remember { mutableStateOf(today) }
 
-    /* 监听日期变化 → 拉取计划 */
+    // 监听日期变化 → 拉取当天所有会话
     LaunchedEffect(selectedDate) {
-        vm.loadPlans(selectedDate.toString())      // yyyy-MM-dd
+        vm.loadPlans(selectedDate.toString())
     }
-
-    /* 订阅状态 */
     val uiState by vm.uiState.collectAsState()
 
-    /* —— Bottom-Sheet —— */
+    // BottomSheet 状态
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSheet by remember { mutableStateOf(false) }
-    var currentPlan by remember { mutableStateOf("") }
+    var currentItems by remember { mutableStateOf<List<PlanItemDto>>(emptyList()) }
 
-    /* ====== 训练计划列表（字符串展示） ====== */
-    val trainingPlans: List<String> = when (uiState) {
-        is PlanUiState.Success -> (uiState as PlanUiState.Success).items.map { item ->
-            "类型${item.type} × ${item.number}"
-        }
+    // 从 uiState 中取出 sessions 列表（按 sessionId 升序）
+    val sessions: List<PlanDayDto> = when (uiState) {
+        is PlanUiState.Success -> (uiState as PlanUiState.Success).sessions
+            .sortedBy { it.session.sessionId }
         else -> emptyList()
     }
 
-    /* ====== 训练记录日期高亮（TODO: 接真实接口） ====== */
+    // 日历中高亮的训练记录日（示例，后续接真实接口）
     val trainingRecordsDates = remember { listOf(today.minusDays(2), today) }
 
-    /* ====== 顶部 Loading / Error / Empty ====== */
+    // 顶部 Loading / Error / Empty 提示
     when (uiState) {
         PlanUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         is PlanUiState.Error -> Text(
@@ -76,16 +77,15 @@ fun RecordScreen(
             textAlign = TextAlign.Center
         )
         PlanUiState.Empty -> Text(
-            text = "今日暂无训练计划",
+            "今日暂无训练计划",
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
             textAlign = TextAlign.Center
         )
-        else -> {}   // Success 时不额外提示
+        else -> { /* Success 不额外提示 */ }
     }
 
-    /* 主体 UI（原布局基本未动） */
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -96,20 +96,22 @@ fun RecordScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            /* —— 日历头 —— */
+            // —— 日历头部 ——
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("${selectedDate.year} / ${selectedDate.monthValue}",
-                    style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "${selectedDate.year} / ${selectedDate.monthValue}",
+                    style = MaterialTheme.typography.titleLarge
+                )
                 IconButton(onClick = { isWeekView = !isWeekView }) {
                     Icon(Icons.Default.ArrowDropDown, contentDescription = "切换视图")
                 }
             }
 
-            /* —— 周 / 月 视图 —— */
+            // —— 周视图 or 月视图 ——
             if (isWeekView) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -137,7 +139,7 @@ fun RecordScreen(
             Spacer(Modifier.height(16.dp))
             Divider()
 
-            /* —— 当日训练计划 —— */
+            // —— 当日训练计划 列表 ——
             Text(
                 text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练计划",
                 style = MaterialTheme.typography.titleMedium,
@@ -147,13 +149,17 @@ fun RecordScreen(
                 textAlign = TextAlign.Center
             )
             Column {
-                trainingPlans.forEach { plan ->
+                sessions.forEachIndexed { idx, day ->
+                    val label = "计划 ${idx + 1}"
                     ListItem(
                         modifier = Modifier.clickable {
-                            currentPlan = plan
+                            currentItems = day.items
                             showSheet = true
                         },
-                        headlineContent = { Text(plan) },
+                        headlineContent = { Text(label) },
+                        supportingContent = {
+                            Text("共 ${day.items.size} 组动作")
+                        },
                         trailingContent = {
                             Icon(Icons.Default.ArrowForward, contentDescription = null)
                         }
@@ -162,8 +168,9 @@ fun RecordScreen(
                 }
             }
 
-            /* —— 训练记录（假数据，占位） —— */
             Spacer(Modifier.height(16.dp))
+
+            // —— 训练记录（占位） ——
             Text(
                 text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练记录",
                 style = MaterialTheme.typography.titleMedium,
@@ -188,7 +195,7 @@ fun RecordScreen(
             }
         }
 
-        /* —— Plan Detail Bottom-Sheet —— */
+        // —— 底部弹窗：展示当前会话的动作明细 ——
         if (showSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showSheet = false },
@@ -196,21 +203,25 @@ fun RecordScreen(
                 dragHandle = null,
                 modifier = Modifier.fillMaxHeight(0.75f)
             ) {
-                Box(
+                Column(
                     Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(16.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text("训练计划详情", style = MaterialTheme.typography.headlineSmall)
-                        Text(currentPlan, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = { showSheet = false }) { Text("关闭") }
+                    Text("训练计划详情", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        itemsIndexed(currentItems) { idx, item ->
+                            Text(
+                                text = "${idx + 1}. 类型${item.type} × ${item.number}次，配重${item.tWeight}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { showSheet = false }, Modifier.align(Alignment.End)) {
+                        Text("关闭")
                     }
                 }
             }
@@ -218,8 +229,9 @@ fun RecordScreen(
     }
 }
 
-/* ========== 组件 & 工具函数（原逻辑保持） ========== */
-
+/**
+ * 月视图网格
+ */
 @Composable
 private fun MonthGrid(
     center: LocalDate,
@@ -228,6 +240,7 @@ private fun MonthGrid(
     trainingDates: List<LocalDate>,
     onSelect: (LocalDate) -> Unit
 ) {
+    // 星期标签
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
@@ -258,9 +271,8 @@ private fun MonthGrid(
                             isSelected = date == selectedDate,
                             isToday = date == today,
                             isTrained = trainingDates.contains(date),
-                            showWeekDay = false,
-                            onClick = { onSelect(date) }
-                        )
+                            showWeekDay = false
+                        ) { onSelect(date) }
                     }
                 }
             }
@@ -268,6 +280,9 @@ private fun MonthGrid(
     }
 }
 
+/**
+ * 单个日期格子
+ */
 @Composable
 private fun DateCell(
     date: LocalDate,
@@ -290,7 +305,7 @@ private fun DateCell(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clickable { onClick() }
+            .clickable(onClick = onClick)
             .padding(4.dp)
     ) {
         if (showWeekDay) {
@@ -330,15 +345,15 @@ private fun DateCell(
 }
 
 private fun generateWeekDates(center: LocalDate): List<LocalDate> {
-    val firstDayOfWeek = center.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    return (0..6).map { firstDayOfWeek.plusDays(it.toLong()) }
+    val first = center.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    return (0..6).map { first.plusDays(it.toLong()) }
 }
 
 private fun generateMonthDates(center: LocalDate): List<LocalDate> {
-    val first = center.withDayOfMonth(1)
-    val last  = center.withDayOfMonth(center.lengthOfMonth())
-    val start = first.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    val end   = last.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
+    val firstOfMonth = center.withDayOfMonth(1)
+    val lastOfMonth  = center.withDayOfMonth(center.lengthOfMonth())
+    val start = firstOfMonth.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    val end   = lastOfMonth.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
     val days  = ChronoUnit.DAYS.between(start, end).toInt() + 1
     return (0 until days).map { start.plusDays(it.toLong()) }
 }
