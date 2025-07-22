@@ -1,17 +1,20 @@
 package com.example.dumb_app.core.network
 
-import com.example.dumb_app.core.model.LoginReq
-import com.example.dumb_app.core.model.RegisterReq
-import com.example.dumb_app.core.model.UserDto
-import com.example.dumb_app.core.model.TrainDataReq
-import com.example.dumb_app.core.model.UpdateNameReq
-import com.example.dumb_app.core.model.BodyDataReq
-import com.example.dumb_app.core.model.PlanItemDto
-import com.example.dumb_app.core.model.PlanDayCreateDto
-import com.example.dumb_app.core.model.PlanDayDto
+import com.example.dumb_app.core.model.User.LoginReq
+import com.example.dumb_app.core.model.User.RegisterReq
+import com.example.dumb_app.core.model.User.UserDto
+import com.example.dumb_app.core.model.User.TrainDataReq
+import com.example.dumb_app.core.model.User.UpdateNameReq
+import com.example.dumb_app.core.model.User.BodyDataReq
+import com.example.dumb_app.core.model.Plan.PlanItemDto
+import com.example.dumb_app.core.model.Plan.PlanDayCreateDto
+import com.example.dumb_app.core.model.Plan.PlanDayDto
+import com.example.dumb_app.core.model.Log.LogDayDto
+import com.example.dumb_app.core.model.Log.LogItemDto
+import com.example.dumb_app.core.model.Log.LogSessionDto
+import com.example.dumb_app.core.model.Log.LogWorkDto
 import retrofit2.http.Body
 import retrofit2.http.POST
-import retrofit2.http.PATCH
 import retrofit2.http.Path
 import retrofit2.http.GET
 import retrofit2.http.Query
@@ -71,6 +74,27 @@ interface ApiService {
     suspend fun listItemsBySession(
         @Query("sessionId") sessionId: Int
     ): List<PlanItemDto>
+
+    /** ========== 训练记录（头 + 明细 + 动作） ========== */
+
+    /** 1. 查询某用户某日的所有训练记录（含每条记录下的 LogItem 列表） */
+    @GET("logs/day")
+    suspend fun getDayRecords(
+        @Query("userId") userId: Int,
+        @Query("date")   date:   String      // yyyy-MM-dd
+    ): LogDayDto
+
+    /** 2. 查询单条训练记录的所有运动组（LogItem） */
+    @GET("log/item/session")
+    suspend fun listItemsByRecord(
+        @Query("recordId") recordId: Int
+    ): List<LogItemDto>
+
+    /** 3. 查询单个运动组下所有动作明细（LogWork） */
+    @GET("log/work/item")
+    suspend fun listWorksByGroup(
+        @Query("groupId") groupId: Int
+    ): List<LogWorkDto>
 
     // 后面可以按需继续添加：上传训练记录、查询计划等接口
 }

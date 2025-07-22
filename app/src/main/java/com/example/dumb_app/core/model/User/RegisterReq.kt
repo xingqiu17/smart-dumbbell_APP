@@ -1,4 +1,4 @@
-package com.example.dumb_app.core.model
+package com.example.dumb_app.core.model.User
 
 
 data class RegisterReq(

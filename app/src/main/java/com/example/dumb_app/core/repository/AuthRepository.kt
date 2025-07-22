@@ -1,6 +1,11 @@
 package com.example.dumb_app.core.repository
 
-import com.example.dumb_app.core.model.*
+import com.example.dumb_app.core.model.User.BodyDataReq
+import com.example.dumb_app.core.model.User.LoginReq
+import com.example.dumb_app.core.model.User.RegisterReq
+import com.example.dumb_app.core.model.User.TrainDataReq
+import com.example.dumb_app.core.model.User.UpdateNameReq
+import com.example.dumb_app.core.model.User.UserDto
 import com.example.dumb_app.core.network.ApiService
 import com.example.dumb_app.core.util.PasswordUtil
 import com.example.dumb_app.core.util.UserSession

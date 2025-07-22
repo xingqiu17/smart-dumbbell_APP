@@ -1,6 +1,6 @@
 package com.example.dumb_app.core.util
 
-import com.example.dumb_app.core.model.UserDto
+import com.example.dumb_app.core.model.User.UserDto
 
 /**
  * 轻量级全局会话：缓存当前登录 / 注册成功后的用户。

@@ -7,8 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -17,17 +15,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.dumb_app.feature.record.RecordViewModel
 import com.example.dumb_app.feature.record.PlanUiState
-import com.example.dumb_app.core.model.PlanDayDto
-import com.example.dumb_app.core.model.PlanItemDto
-import androidx.compose.foundation.shape.CircleShape
-
+import com.example.dumb_app.feature.record.RecordViewModel
+import com.example.dumb_app.core.model.Plan.PlanDayDto
+import com.example.dumb_app.core.model.Plan.PlanItemDto
+import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,27 +32,29 @@ fun WorkoutScreen(
     nav: NavController,
     vm: RecordViewModel = viewModel()
 ) {
-    // Bottom-Sheet 状态
+    // ── Bottom-Sheet 状态 ───────────────────────────
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSheet by remember { mutableStateOf(false) }
 
-    // 详情对话框状态
+    // ── 小弹窗：详情对话框 ─────────────────────────
     var showDetail by remember { mutableStateOf(false) }
     var currentItems by remember { mutableStateOf<List<PlanItemDto>>(emptyList()) }
 
-    // 获取今天日期并拉取当日计划
-    val today = java.time.LocalDate.now()
+    // 获取今天并在弹出列表时拉取计划
+    val today = LocalDate.now()
     LaunchedEffect(showSheet) {
         if (showSheet) {
             vm.loadPlans(today.toString())
         }
     }
-    val uiState by vm.uiState.collectAsState()
 
-    // 从 uiState 取出 sessions，按 sessionId 升序
-    val sessions: List<PlanDayDto> = when (uiState) {
-        is PlanUiState.Success -> (uiState as PlanUiState.Success).sessions
-            .sortedBy { it.session.sessionId }
+    // **改动**：监听 planState 而不是 uiState
+    val planState by vm.planState.collectAsState()
+
+    // 根据 planState 拿出 sessions 列表
+    val sessions: List<PlanDayDto> = when (planState) {
+        is PlanUiState.Success -> (planState as PlanUiState.Success)
+            .sessions.sortedBy { it.session.sessionId }
         else -> emptyList()
     }
 
@@ -63,7 +62,7 @@ fun WorkoutScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        // 顶部 + 底部导航省略，保留“开始运动”按钮
+        // ── 顶部栏 + “开始运动”大按钮 ────────────────
         Scaffold(
             topBar = {
                 SmallTopAppBar(
@@ -116,7 +115,7 @@ fun WorkoutScreen(
             }
         }
 
-        // 全屏 75% 高 Bottom-Sheet：列出当日各训练计划
+        // ── Bottom-Sheet：列出当日各训练计划 ──────────
         if (showSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showSheet = false },
@@ -138,26 +137,30 @@ fun WorkoutScreen(
                     )
                     Spacer(Modifier.height(12.dp))
 
-                    // 顶部 Loading / Error / Empty
-                    when (uiState) {
-                        PlanUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    // **改动**：顶端 Loading / Error / Empty 都根据 planState
+                    when (planState) {
+                        PlanUiState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
                         is PlanUiState.Error -> Text(
-                            text = (uiState as PlanUiState.Error).msg,
+                            text = (planState as PlanUiState.Error).msg,
                             color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
                             textAlign = TextAlign.Center
                         )
                         PlanUiState.Empty -> Text(
                             "今日暂无训练计划",
-                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
                             textAlign = TextAlign.Center
                         )
-                        else -> {}
+                        else -> { /* Success 时不额外提示 */ }
                     }
 
                     Spacer(Modifier.height(8.dp))
 
-                    // 列表：计划 1、计划 2…
+                    // **改动**：列表数据来自 sessions
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(sessions) { idx, day ->
                             Row(
@@ -189,7 +192,7 @@ fun WorkoutScreen(
             }
         }
 
-        // 小弹窗：展示选中计划的动作明细
+        // ── 小弹窗：展示计划动作明细 ─────────────────
         if (showDetail) {
             AlertDialog(
                 onDismissRequest = { showDetail = false },

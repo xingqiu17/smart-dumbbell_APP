@@ -1,4 +1,4 @@
-package com.example.dumb_app.core.model
+package com.example.dumb_app.core.model.Plan
 
 data class PlanDayCreateDto(
     val userId: Int,

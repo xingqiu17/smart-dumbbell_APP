@@ -25,14 +25,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.dumb_app.core.model.PlanDayDto
-import com.example.dumb_app.core.model.PlanItemDto
+import com.example.dumb_app.core.model.Plan.PlanDayDto
+import com.example.dumb_app.core.model.Plan.PlanItemDto
+import com.example.dumb_app.core.model.Log.LogDayDto          // ← 新增
+import com.example.dumb_app.core.model.Log.LogItemDto         // ← 新增
+import com.example.dumb_app.feature.record.LogUiState         // ← 新增
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,32 +48,45 @@ fun RecordScreen(
     val today = LocalDate.now()
     var selectedDate by remember { mutableStateOf(today) }
 
-    // 监听日期变化 → 拉取当天所有会话
-    LaunchedEffect(selectedDate) {
-        vm.loadPlans(selectedDate.toString())
-    }
-    val uiState by vm.uiState.collectAsState()
 
-    // BottomSheet 状态
+    // 监听日期变化 → 拉取当天所有会话和训练记录
+    LaunchedEffect(isWeekView, selectedDate) {
+        vm.loadPlans(selectedDate.toString())
+        vm.loadLogs(selectedDate.toString())    // ← 新增
+        val datesToLoad = if (isWeekView) {
+            generateWeekDates(selectedDate)
+        } else {
+            generateMonthDates(selectedDate)
+        }
+        // 2. 调用 ViewModel 加载这些日期的记录，VM 会把有记录的日期写入 trainingDates StateFlow
+        vm.loadTrainingDates(datesToLoad)
+    }
+    // Plan 部分状态
+    val planUi by vm.planState.collectAsState()
+    // Log 部分状态
+    val logUi  by vm.logState.collectAsState()   // ← 新增
+
+    // BottomSheet 状态（仅给 Plan 用）
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSheet by remember { mutableStateOf(false) }
     var currentItems by remember { mutableStateOf<List<PlanItemDto>>(emptyList()) }
 
-    // 从 uiState 中取出 sessions 列表（按 sessionId 升序）
-    val sessions: List<PlanDayDto> = when (uiState) {
-        is PlanUiState.Success -> (uiState as PlanUiState.Success).sessions
+    // 从 planUi 中取出 sessions 列表（按 sessionId 升序）
+    val sessions: List<PlanDayDto> = when (planUi) {
+        is PlanUiState.Success -> (planUi as PlanUiState.Success).sessions
             .sortedBy { it.session.sessionId }
         else -> emptyList()
     }
 
-    // 日历中高亮的训练记录日（示例，后续接真实接口）
-    val trainingRecordsDates = remember { listOf(today.minusDays(2), today) }
+    // 日历中高亮的训练记录日（示例，后续接真实接口，可改用 logUi）
+    // —— 改动1：用真实 logUi 数据来高亮 ——
+    val trainingRecordsDates by vm.trainingDates.collectAsState()
 
-    // 顶部 Loading / Error / Empty 提示
-    when (uiState) {
+    // Plan 顶部 Loading / Error / Empty 提示（不动）
+    when (planUi) {
         PlanUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         is PlanUiState.Error -> Text(
-            text = (uiState as PlanUiState.Error).msg,
+            text = (planUi as PlanUiState.Error).msg,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier
                 .fillMaxWidth()
@@ -148,29 +165,41 @@ fun RecordScreen(
                     .padding(vertical = 8.dp),
                 textAlign = TextAlign.Center
             )
-            Column {
-                sessions.forEachIndexed { idx, day ->
-                    val label = "计划 ${idx + 1}"
-                    ListItem(
-                        modifier = Modifier.clickable {
-                            currentItems = day.items
-                            showSheet = true
-                        },
-                        headlineContent = { Text(label) },
-                        supportingContent = {
-                            Text("共 ${day.items.size} 组动作")
-                        },
-                        trailingContent = {
-                            Icon(Icons.Default.ArrowForward, contentDescription = null)
-                        }
-                    )
-                    Divider()
+
+            // —— 改动2：如果 sessions 为空，显示占位文本 ——
+            if (sessions.isEmpty()) {
+                Text(
+                    "当日暂无训练计划",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Column {
+                    sessions.forEachIndexed { idx, day ->
+                        val label = "计划 ${idx + 1}"
+                        ListItem(
+                            modifier = Modifier.clickable {
+                                currentItems = day.items
+                                showSheet = true
+                            },
+                            headlineContent = { Text(label) },
+                            supportingContent = {
+                                Text("共 ${day.items.size} 组动作")
+                            },
+                            trailingContent = {
+                                Icon(Icons.Default.ArrowForward, contentDescription = null)
+                            }
+                        )
+                        Divider()
+                    }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // —— 训练记录（占位） ——
+            // —— 训练记录 列表 —— （从这里开始改动）
             Text(
                 text = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 训练记录",
                 style = MaterialTheme.typography.titleMedium,
@@ -179,18 +208,36 @@ fun RecordScreen(
                     .padding(vertical = 8.dp),
                 textAlign = TextAlign.Center
             )
-            Column {
-                listOf("第一次训练", "第二次训练").forEach { record ->
+
+            when (logUi) {
+                LogUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                is LogUiState.Error -> Text(
+                    text = (logUi as LogUiState.Error).msg,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    textAlign = TextAlign.Center
+                )
+                LogUiState.Empty -> Text(
+                    "当日暂无训练记录",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    textAlign = TextAlign.Center
+                )
+                is LogUiState.Success -> {
+                    val day = (logUi as LogUiState.Success).record
+                    // 如果只有一条，就直接展示
                     ListItem(
                         modifier = Modifier.clickable {
+                            vm.selectLog(day)
                             navController.navigate("TrainingRecordDetail")
                         },
-                        headlineContent = { Text(record) },
-                        trailingContent = {
-                            Icon(Icons.Default.ArrowForward, contentDescription = null)
-                        }
+                        headlineContent = { Text("记录 1") },
+                        supportingContent = { Text("共 ${day.items.size} 组动作") },
+                        trailingContent  = { Icon(Icons.Default.ArrowForward, null) }
                     )
-                    Divider()
                 }
             }
         }

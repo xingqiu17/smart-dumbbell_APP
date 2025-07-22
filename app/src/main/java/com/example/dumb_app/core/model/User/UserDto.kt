@@ -1,4 +1,4 @@
-package com.example.dumb_app.core.model
+package com.example.dumb_app.core.model.User
 import com.google.gson.annotations.SerializedName
 
 data class UserDto(

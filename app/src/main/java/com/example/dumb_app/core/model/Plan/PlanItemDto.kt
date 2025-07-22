@@ -1,4 +1,4 @@
-package com.example.dumb_app.core.model
+package com.example.dumb_app.core.model.Plan
 
 /**
  * 对应后端 plan_item 表
