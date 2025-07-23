@@ -57,17 +57,20 @@ class RecordViewModel(
     fun loadPlans(date: String) {
         _planState.value = PlanUiState.Loading
         viewModelScope.launch {
-            runCatching { planRepo.getDayPlan(date) }
-                .onSuccess { dto ->
-                    val list = dto?.let { listOf(it) } ?: emptyList()
-                    _planState.value = if (list.isEmpty()) PlanUiState.Empty
-                    else PlanUiState.Success(list)
+            runCatching { planRepo.getDayPlans(date) }
+                .onSuccess { list ->
+                    _planState.value = if (list.isEmpty()) {
+                        PlanUiState.Empty
+                    } else {
+                        PlanUiState.Success(list)
+                    }
                 }
                 .onFailure {
                     _planState.value = PlanUiState.Error(it.message ?: "网络错误")
                 }
         }
     }
+
 
     /** 拉取指定日期的所有训练记录 */
     fun loadLogs(date: String) {

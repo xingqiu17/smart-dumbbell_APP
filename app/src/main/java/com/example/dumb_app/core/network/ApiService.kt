@@ -58,10 +58,10 @@ interface ApiService {
 
     /** 查询【用户 + 日期】的一天完整训练计划（头 + 明细） */
     @GET("plan/session/day")
-    suspend fun getDayPlan(
+    suspend fun getDayPlans(
         @Query("userId") userId: Int,
-        @Query("date")   date:   String        // yyyy-MM-dd
-    ): PlanDayDto
+        @Query("date")   date:   String
+    ): List<PlanDayDto>
 
     /** 创建 / 覆盖某天的训练计划 */
     @POST("plan/session")

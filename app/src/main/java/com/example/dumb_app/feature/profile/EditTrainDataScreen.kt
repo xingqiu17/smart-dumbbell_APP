@@ -10,7 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.example.dumb_app.core.util.UserSession      // ← 新增
+import com.example.dumb_app.core.util.UserSession
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

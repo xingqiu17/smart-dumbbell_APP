@@ -1,6 +1,5 @@
 package com.example.dumb_app.feature.workout
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
 import com.example.dumb_app.feature.record.PlanUiState
 import com.example.dumb_app.feature.record.RecordViewModel
 import com.example.dumb_app.core.model.Plan.PlanDayDto
@@ -30,46 +30,56 @@ import java.time.LocalDate
 @Composable
 fun WorkoutScreen(
     nav: NavController,
-    vm: RecordViewModel = viewModel()
+    vm: RecordViewModel = viewModel(),
+    wifiVm: WifiScanViewModel = viewModel()
 ) {
-    // ── Bottom-Sheet 状态 ───────────────────────────
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showSheet by remember { mutableStateOf(false) }
-
-    // ── 小弹窗：详情对话框 ─────────────────────────
-    var showDetail by remember { mutableStateOf(false) }
-    var currentItems by remember { mutableStateOf<List<PlanItemDto>>(emptyList()) }
-
-    // 获取今天并在弹出列表时拉取计划
-    val today = LocalDate.now()
-    LaunchedEffect(showSheet) {
-        if (showSheet) {
-            vm.loadPlans(today.toString())
+    // 自动重连尝试
+    LaunchedEffect(Unit) {
+        wifiVm.getLastHost()?.let { host ->
+            wifiVm.connectToDevice(host)
         }
     }
 
-    // **改动**：监听 planState 而不是 uiState
-    val planState by vm.planState.collectAsState()
+    // 监听 WS 连接状态
+    val wsEvent by wifiVm.wsEvents.collectAsState()
 
-    // 根据 planState 拿出 sessions 列表
-    val sessions: List<PlanDayDto> = when (planState) {
-        is PlanUiState.Success -> (planState as PlanUiState.Success)
-            .sessions.sortedBy { it.session.sessionId }
-        else -> emptyList()
+    // 连接状态文字
+    val connStatus = when (wsEvent) {
+        WifiScanViewModel.WsEvent.Connected       -> "已连接设备"
+        WifiScanViewModel.WsEvent.Paired          -> "配对完成"
+        WifiScanViewModel.WsEvent.PairRequested   -> "等待配对确认"
+        is WifiScanViewModel.WsEvent.Error        -> "连接失败"
+        else                                      -> "未连接设备"
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        // ── 顶部栏 + “开始运动”大按钮 ────────────────
+    // 记录模块状态
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showSheet by remember { mutableStateOf(false) }
+    var showDetail by remember { mutableStateOf(false) }
+    var currentItems by remember { mutableStateOf<List<PlanItemDto>>(emptyList()) }
+    val today = LocalDate.now()
+    LaunchedEffect(showSheet) {
+        if (showSheet) vm.loadPlans(today.toString())
+    }
+    val planState by vm.planState.collectAsState()
+    val sessions: List<PlanDayDto> =
+        (planState as? PlanUiState.Success)?.sessions
+            ?.sortedBy { it.session.sessionId } ?: emptyList()
+
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Scaffold(
             topBar = {
                 SmallTopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = { nav.navigate("wifiConnect") }) {
-                            Icon(Icons.Default.Add, contentDescription = "添加设备")
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { nav.navigate("wifiConnect") }) {
+                                Icon(Icons.Default.Add, contentDescription = "添加设备")
+                            }
+                            Text(
+                                connStatus,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
                         }
                     }
                 )
@@ -77,7 +87,7 @@ fun WorkoutScreen(
             contentWindowInsets = WindowInsets(0)
         ) { inner ->
             Box(
-                modifier = Modifier
+                Modifier
                     .fillMaxSize()
                     .padding(inner)
                     .padding(bottom = 64.dp),
@@ -92,7 +102,7 @@ fun WorkoutScreen(
                     onClick = { showSheet = true }
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxSize(),
+                        Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
@@ -113,106 +123,120 @@ fun WorkoutScreen(
                     }
                 }
             }
-        }
 
-        // ── Bottom-Sheet：列出当日各训练计划 ──────────
-        if (showSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showSheet = false },
-                sheetState = sheetState,
-                dragHandle = null,
-                modifier = Modifier.fillMaxHeight(0.75f)
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(16.dp)
+            if (showSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showSheet = false },
+                    sheetState = sheetState,
+                    dragHandle = null,
+                    modifier = Modifier.fillMaxHeight(0.75f)
                 ) {
-                    Text(
-                        "选择训练计划",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(12.dp))
-
-                    // **改动**：顶端 Loading / Error / Empty 都根据 planState
-                    when (planState) {
-                        PlanUiState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                        is PlanUiState.Error -> Text(
-                            text = (planState as PlanUiState.Error).msg,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            "选择训练计划",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center
                         )
-                        PlanUiState.Empty -> Text(
-                            "今日暂无训练计划",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            textAlign = TextAlign.Center
-                        )
-                        else -> { /* Success 时不额外提示 */ }
-                    }
+                        Spacer(Modifier.height(12.dp))
 
-                    Spacer(Modifier.height(8.dp))
-
-                    // **改动**：列表数据来自 sessions
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        itemsIndexed(sessions) { idx, day ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        currentItems = day.items
-                                        showDetail = true
+                        when (planState) {
+                            PlanUiState.Loading -> {
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                            }
+                            is PlanUiState.Error -> {
+                                Text(
+                                    text = (planState as PlanUiState.Error).msg,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            PlanUiState.Empty -> {
+                                Text(
+                                    "今日暂无训练计划",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                )
+                            }
+                            is PlanUiState.Success -> {
+                                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    itemsIndexed(sessions) { idx, day ->
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    currentItems = day.items
+                                                    showDetail = true
+                                                }
+                                                .padding(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text("计划 ${idx + 1}", style = MaterialTheme.typography.bodyLarge)
+                                                Text("共 ${day.items.size} 组动作", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            Button(onClick = {
+                                                showSheet = false
+                                                // TODO: 发送训练信息给设备
+                                            }) {
+                                                Text("开始训练")
+                                            }
+                                        }
+                                        Divider()
                                     }
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text("计划 ${idx + 1}", style = MaterialTheme.typography.bodyLarge)
-                                    Text("共 ${day.items.size} 组动作", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Button(onClick = {
-                                    // TODO: 发送训练信息给设备
-                                    showSheet = false
-                                }) {
-                                    Text("开始训练")
                                 }
                             }
-                            Divider()
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        // **始终显示的“创建训练计划”按钮**
+                        Button(
+                            onClick = {
+                                showSheet = false
+                                nav.navigate("createPlan")
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("创建训练计划")
                         }
                     }
                 }
             }
-        }
 
-        // ── 小弹窗：展示计划动作明细 ─────────────────
-        if (showDetail) {
-            AlertDialog(
-                onDismissRequest = { showDetail = false },
-                title = { Text("训练计划详情") },
-                text = {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        itemsIndexed(currentItems) { idx, item ->
-                            Text(
-                                "${idx + 1}. 类型${item.type} × ${item.number}次，配重${item.tWeight}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+            if (showDetail) {
+                AlertDialog(
+                    onDismissRequest = { showDetail = false },
+                    title = { Text("训练计划详情") },
+                    text = {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            itemsIndexed(currentItems) { idx, item ->
+                                Text(
+                                    "${idx + 1}. 类型${item.type} × ${item.number}次，配重${item.tWeight}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showDetail = false }) {
+                            Text("关闭")
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showDetail = false }) {
-                        Text("关闭")
-                    }
-                }
-            )
+                )
+            }
         }
     }
 }

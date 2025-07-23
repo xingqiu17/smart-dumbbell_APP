@@ -15,10 +15,8 @@ class TrainingRepository(
 ) {
 
     /* ---------- 查询：某用户某日完整计划 ---------- */
-    suspend fun getDayPlan(date: String): PlanDayDto? {
-        val uid = UserSession.uid
-        return runCatching { api.getDayPlan(uid, date) }
-            .getOrNull()                 // 若当天无计划，后端返回 404 → 转换为 null
+    suspend fun getDayPlans(date: String): List<PlanDayDto> {
+        return api.getDayPlans(UserSession.uid, date)
     }
 
     /* ---------- 创建 / 覆盖：某日训练计划 ---------- */
