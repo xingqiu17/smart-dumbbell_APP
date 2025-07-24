@@ -76,32 +76,32 @@ class RecordViewModel(
     fun loadLogs(date: String) {
         _logState.value = LogUiState.Loading
         viewModelScope.launch {
-            runCatching { logRepo.getDayRecords(date) }
-                .onSuccess { dto ->
-                    if (dto == null || dto.session == null) {
-                        // session 为 null，说明后端没记录，走 Empty 分支
-                        _logState.value = LogUiState.Empty
-                    } else {
-                        // session 不为空，才是真正的 Success
-                        _logState.value = LogUiState.Success(dto)
-                    }
-                }
-                .onFailure {
-                    _logState.value = LogUiState.Error(it.message ?: "网络错误")
-                }
+            // runCatching.getOrNull(): HTTP 404 或者其它异常都会返回 null
+            val dto = runCatching { logRepo.getDayRecords(date) }
+                .getOrNull()
+
+            _logState.value = if (dto == null || dto.session == null) {
+                // 404 也好，session 为空也好，都算无记录
+                LogUiState.Empty
+            } else {
+                LogUiState.Success(dto)
+            }
         }
     }
 
     fun loadTrainingDates(dates: List<LocalDate>) {
         viewModelScope.launch {
-            val trained = dates.mapNotNull { date ->
-                runCatching { logRepo.getDayRecords(date.toString()) }
+            val trainedDates = dates.mapNotNull { d ->
+                // 同样地，不要把 404 当错误，只当无记录跳过
+                runCatching { logRepo.getDayRecords(d.toString()) }
                     .getOrNull()
-                    // 如果有 session，不为空就保留这一天
-                    ?.takeIf { it.session != null }?.session?.date
+                    // 只有 session 不空的才当已训练
+                    ?.takeIf { it.session != null }
+                    ?.session
+                    ?.date
                     ?.let { LocalDate.parse(it) }
             }
-            _trainingDates.value = trained
+            _trainingDates.value = trainedDates
         }
     }
 }
