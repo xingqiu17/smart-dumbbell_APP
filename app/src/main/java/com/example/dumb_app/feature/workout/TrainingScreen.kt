@@ -17,7 +17,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
 import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel.WsEvent
+import com.example.dumb_app.core.network.NetworkModule
+import com.example.dumb_app.core.repository.TrainingRepository
 import com.example.dumb_app.core.util.TrainingSession
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,6 +31,23 @@ fun TrainingScreen(
     navController: NavController,
     wifiVm: WifiScanViewModel
 ) {
+
+
+    // ① 准备 Repository
+    val repo = remember { TrainingRepository(NetworkModule.apiService) }
+
+    // ② 创建 ViewModel（带 repo 参数，inline Factory）
+    val vm: TrainingViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(clz: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return TrainingViewModel(repo) as T
+            }
+        }
+    )
+
+    // ③ 监听完成操作的 UI 状态（可选，用于 Toast 或导航）
+    val uiState by vm.uiState.collectAsState()
     // 1) 从 TrainingSession 读取已保存的计划（静态）
     val cachedSid = TrainingSession.sessionId
     val initialType = TrainingSession.items.firstOrNull()?.type ?: 0
@@ -191,6 +214,7 @@ fun TrainingScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         showFinishDialog = false
+                        vm.markPlanComplete()
                         TrainingSession.clear()
                         // 返回“主界面”。优先精确回退到 workout；失败则普通返回
                         val popped = navController.popBackStack("workout", inclusive = false)

@@ -85,8 +85,11 @@ fun WorkoutScreen(
     }
     val planState by vm.planState.collectAsState()
     val sessions: List<PlanDayDto> =
-        (planState as? PlanUiState.Success)?.sessions
-            ?.sortedBy { it.session.sessionId } ?: emptyList()
+        (planState as? PlanUiState.Success)
+            ?.sessions
+            ?.filter { !it.session.complete }          // 只留 complete == false
+            ?.sortedBy { it.session.sessionId }
+            ?: emptyList()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Scaffold(
@@ -182,7 +185,7 @@ fun WorkoutScreen(
                             }
                             PlanUiState.Empty -> {
                                 Text(
-                                    "今日暂无训练计划",
+                                    "今日暂无未完成的训练计划",
                                     style = MaterialTheme.typography.bodyLarge,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier

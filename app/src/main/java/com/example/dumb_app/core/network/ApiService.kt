@@ -13,10 +13,14 @@ import com.example.dumb_app.core.model.Log.LogDayDto
 import com.example.dumb_app.core.model.Log.LogItemDto
 import com.example.dumb_app.core.model.Log.LogSessionDto
 import com.example.dumb_app.core.model.Log.LogWorkDto
+import com.example.dumb_app.core.model.Plan.CompleteReq
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.GET
+import retrofit2.http.PATCH
+import retrofit2.http.PUT
 import retrofit2.http.Query
 
 /**
@@ -95,6 +99,27 @@ interface ApiService {
     suspend fun listWorksByGroup(
         @Query("groupId") groupId: Int
     ): List<LogWorkDto>
+
+
+    /** ① 完整更新某个计划（修改头 + 明细） */
+    @PUT("plan/session/{sessionId}")
+    suspend fun updateDayPlan(
+        @Path("sessionId") sessionId: Int,
+        @Body req: PlanDayCreateDto
+    ): PlanDayDto
+
+    /** ② 仅修改 complete 标志 */
+    @PATCH("plan/session/{sessionId}/complete")
+    suspend fun updatePlanComplete(
+        @Path("sessionId") sessionId: Int,
+        @Body req: CompleteReq    // 需要在 model 包里定义 data class CompleteReq(val complete: Boolean)
+    ): Unit
+
+    /** ③ 删除整个计划 */
+    @DELETE("plan/session/{sessionId}")
+    suspend fun deleteDayPlan(
+        @Path("sessionId") sessionId: Int
+    ): Unit
 
     // 后面可以按需继续添加：上传训练记录、查询计划等接口
 }
