@@ -1,5 +1,4 @@
 // app/src/main/java/com/example/dumb_app/feature/record/TrainingRecordDetailScreen.kt
-
 package com.example.dumb_app.feature.record
 
 import android.graphics.Paint
@@ -38,7 +37,10 @@ private data class GroupRecord(
     val actionName: String,
     val actionRecords: List<ActionRecord>
 ) {
-    val averageScore: Float = actionRecords.map { it.score }.average().toFloat()
+    // ⚠️ 避免空列表 average() 返回 NaN
+    val averageScore: Float =
+        if (actionRecords.isEmpty()) 0f
+        else actionRecords.map { it.score }.average().toFloat()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,9 +56,21 @@ fun TrainingRecordDetailScreen(
     }
     // 3) 用 recordEntry 拿同一个 RecordViewModel
     val vm: RecordViewModel = viewModel(recordEntry)
+
     // 从 VM 里拿到“刚才选中的”那条 LogDayDto
     val selectedLog by vm.selectedLog.collectAsState()
-    val log = selectedLog
+    val log: LogDayDto? = selectedLog
+
+    // 新增：收集每个 groupId 对应的 works 列表（由 VM 维护）
+    val worksMap by vm.worksMap.collectAsState()
+
+    // 当选中的日志变更时，按 groupId 触发一次批量加载 works
+    LaunchedEffect(log?.session?.recordId) {
+        val groupIds = log?.items?.mapNotNull { it.groupId } ?: emptyList()
+        if (groupIds.isNotEmpty()) {
+            vm.loadWorksFor(groupIds)
+        }
+    }
 
     // 在 Composable 作用域里先抓一份主题色
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -95,7 +109,7 @@ fun TrainingRecordDetailScreen(
                 val groups = log.items
                     .sortedBy { it.tOrder }
                     .mapIndexed { idx, item ->
-                        val works = log.works?.get(item.groupId) ?: emptyList()
+                        val works = worksMap[item.groupId].orEmpty()  // ← 改为从 VM 的 worksMap 获取
                         GroupRecord(
                             groupNumber   = idx + 1,
                             actionName    = "类型${item.type}",
@@ -138,9 +152,9 @@ fun TrainingRecordDetailScreen(
                                         )
                                     }
                                 }
-                                // 平均分
+                                // 平均分（空明细显示 --）
                                 Text(
-                                    "平均分：${group.averageScore.toInt()}",
+                                    text = "平均分：" + (if (group.actionRecords.isEmpty()) "--" else group.averageScore.toInt().toString()),
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -205,7 +219,7 @@ fun TrainingRecordDetailScreen(
                                             if (count >= 2) {
                                                 val w = size.width
                                                 val h = size.height
-                                                val dx = w / (count - 1)
+                                                val dx = if (count > 1) w / (count - 1) else w
                                                 val tick = 4.dp.toPx()
                                                 val labelSize = 12.dp.toPx()
                                                 val paint = Paint().apply {
@@ -244,7 +258,11 @@ fun TrainingRecordDetailScreen(
                                                         if (i == 0) moveTo(x, y) else lineTo(x, y)
                                                     }
                                                 }
-                                                drawPath(path, primaryColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+                                                drawPath(
+                                                    path,
+                                                    primaryColor,
+                                                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                                                )
                                                 // 小圆点
                                                 scores.forEachIndexed { i, s ->
                                                     val x = i * dx

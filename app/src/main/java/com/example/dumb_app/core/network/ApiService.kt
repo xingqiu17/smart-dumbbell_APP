@@ -14,6 +14,8 @@ import com.example.dumb_app.core.model.Log.LogItemDto
 import com.example.dumb_app.core.model.Log.LogSessionDto
 import com.example.dumb_app.core.model.Log.LogWorkDto
 import com.example.dumb_app.core.model.Plan.CompleteReq
+import com.example.dumb_app.core.model.Log.LogDayCreateReq
+
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.POST
@@ -24,8 +26,7 @@ import retrofit2.http.PUT
 import retrofit2.http.Query
 
 /**
- * 定义后端 HTTP 接口。
- * 注意：BASE_URL + POST("v1/users/...") 构成完整路径： http://host:port/api/v1/users/...
+ * 注意：你的 BASE_URL 里已包含 "/api/"，所以下面的相对路径会拼成 /api/xxx
  */
 interface ApiService {
 
@@ -37,10 +38,8 @@ interface ApiService {
     @POST("v1/users/login")
     suspend fun login(@Body req: LoginReq): UserDto
 
-
-        /** 更新训练数据（目标 + 配重） */
     /** 更新训练数据（POST，不是 PATCH）*/
-    @POST("v1/users/{id}/trainData")         // ← 保持 @Path 形式
+    @POST("v1/users/{id}/trainData")
     suspend fun updateTrainData(
         @Path("id") id: Int,
         @Body req: TrainDataReq
@@ -59,6 +58,8 @@ interface ApiService {
         @Path("id") id: Int,
         @Body req: BodyDataReq
     ): UserDto
+
+    /** ======== 训练计划（保持原样） ======== */
 
     /** 查询【用户 + 日期】的一天完整训练计划（头 + 明细） */
     @GET("plan/session/day")
@@ -79,28 +80,6 @@ interface ApiService {
         @Query("sessionId") sessionId: Int
     ): List<PlanItemDto>
 
-    /** ========== 训练记录（头 + 明细 + 动作） ========== */
-
-    /** 1. 查询某用户某日的所有训练记录（含每条记录下的 LogItem 列表） */
-    @GET("logs/day")
-    suspend fun getDayRecords(
-        @Query("userId") userId: Int,
-        @Query("date")   date:   String      // yyyy-MM-dd
-    ): LogDayDto
-
-    /** 2. 查询单条训练记录的所有运动组（LogItem） */
-    @GET("log/item/session")
-    suspend fun listItemsByRecord(
-        @Query("recordId") recordId: Int
-    ): List<LogItemDto>
-
-    /** 3. 查询单个运动组下所有动作明细（LogWork） */
-    @GET("log/work/item")
-    suspend fun listWorksByGroup(
-        @Query("groupId") groupId: Int
-    ): List<LogWorkDto>
-
-
     /** ① 完整更新某个计划（修改头 + 明细） */
     @PUT("plan/session/{sessionId}")
     suspend fun updateDayPlan(
@@ -112,7 +91,7 @@ interface ApiService {
     @PATCH("plan/session/{sessionId}/complete")
     suspend fun updatePlanComplete(
         @Path("sessionId") sessionId: Int,
-        @Body req: CompleteReq    // 需要在 model 包里定义 data class CompleteReq(val complete: Boolean)
+        @Body req: CompleteReq
     ): Unit
 
     /** ③ 删除整个计划 */
@@ -121,5 +100,30 @@ interface ApiService {
         @Path("sessionId") sessionId: Int
     ): Unit
 
-    // 后面可以按需继续添加：上传训练记录、查询计划等接口
+    /** ======== 训练记录（头 + 明细 + 动作） ======== */
+
+    /** 1) 创建【一次训练记录：session + items + works】（不覆盖当日旧记录） */
+    @POST("log/session")
+    suspend fun createDayRecord(
+        @Body req: LogDayCreateReq
+    ): LogDayDto   // 复用你已有的聚合 DTO：包含 session + items
+
+    /** 2) 按日查询【用户 + 日期】的所有训练记录（每条带 items） */
+    @GET("log/session/day")
+    suspend fun getDayRecords(
+        @Query("userId") userId: Int,
+        @Query("date")   date:   String      // yyyy-MM-dd
+    ): List<LogDayDto>
+
+    /** 3) 查询单条训练记录的所有运动组（LogItem） */
+    @GET("log/item/session/{recordId}")
+    suspend fun listItemsByRecord(
+        @Path("recordId") recordId: Int
+    ): List<LogItemDto>
+
+    /** 4) 查询单个运动组下所有动作明细（LogWork） */
+    @GET("log/work/item/{groupId}")
+    suspend fun listWorksByGroup(
+        @Path("groupId") groupId: Int
+    ): List<LogWorkDto>
 }
