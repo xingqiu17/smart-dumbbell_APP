@@ -7,6 +7,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
 import com.example.dumb_app.feature.workout.WorkoutScreen
 import com.example.dumb_app.feature.workout.WifiConnectScreen
 import com.example.dumb_app.feature.record.RecordScreen
@@ -18,10 +19,12 @@ import com.example.dumb_app.feature.profile.EditTrainDataScreen
 import com.example.dumb_app.feature.auth.LoginScreen
 import com.example.dumb_app.feature.auth.RegisterScreen
 import com.example.dumb_app.feature.workout.CreatePlanScreen
+import com.example.dumb_app.feature.workout.TrainingScreen
 
 @Composable
 fun NavGraph(
-    navController: NavHostController
+    navController: NavHostController,
+    wifiVm: WifiScanViewModel
 ) {
 
     val firstRoute = if (/* 已登录？ */ false) "workout" else "login"
@@ -32,7 +35,10 @@ fun NavGraph(
     ) {
         // 运动主界面
         composable("workout") {
-            WorkoutScreen(navController)
+            WorkoutScreen(
+                nav = navController,
+                wifiVm = wifiVm               // ← 传给 WorkoutScreen
+            )
         }
         // 记录主界面
         composable("record") {
@@ -63,7 +69,12 @@ fun NavGraph(
         composable("login")    { LoginScreen(navController) }
         composable("register") { RegisterScreen(navController) }
         composable("EditTrainData") { EditTrainDataScreen(navController) }
-        composable("createPlan") { CreatePlanScreen(navController)
+        composable("createPlan") { CreatePlanScreen(navController) }
+        composable("training") {
+            TrainingScreen(
+                navController = navController,
+                wifiVm = wifiVm
+            )
         }
 
     }

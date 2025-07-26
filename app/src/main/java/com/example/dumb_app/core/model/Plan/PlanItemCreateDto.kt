@@ -4,5 +4,5 @@ data class PlanItemCreateDto(
     val type:    Int,
     val number:  Int,
     val tOrder:  Int,
-    val tWeight: Int
+    val tWeight: Float
 )

@@ -27,6 +27,7 @@ class AuthRepository(
         val md5 = PasswordUtil.md5WithSalt(rawPwd, "dumb")
         val user = api.login(LoginReq(account, md5))
         UserSession.update(user)
+        UserSession.updateHwWeight(user.hwWeight)
         return user
     }
 
@@ -36,6 +37,7 @@ class AuthRepository(
         val req = TrainDataReq(aim, hwWeight)
         val updated = api.updateTrainData(uid, req)
         UserSession.update(updated)
+        UserSession.updateHwWeight(hwWeight)
         return updated
     }
 

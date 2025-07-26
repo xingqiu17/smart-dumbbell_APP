@@ -5,10 +5,13 @@ import android.net.wifi.ScanResult
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dumb_app.core.repository.PairingRepository
+import com.example.dumb_app.core.util.UserSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+
 import okhttp3.*
 
 import java.util.UUID
@@ -28,6 +31,7 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
         object Connected    : WsEvent()
         data class Error(val msg: String): WsEvent()
         data class Data(val payload: String): WsEvent()
+        data class ExerciseData(val exercise: Int, val rep: Int, val score: Double) : WsEvent()
     }
     private val _wsEvents = MutableStateFlow<WsEvent?>(null)
     val wsEvents: StateFlow<WsEvent?> = _wsEvents
@@ -70,15 +74,33 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
                                 _wsEvents.value = WsEvent.Paired
                                 // ← 配对完成后也可当作“已知设备”存 host
                                 currentHost?.let { repo.saveLastHost(it) }
+                                sendUserBindIfLoggedIn()
                             }
                             text.contains("\"event\":\"connected\"") -> {
                                 _wsEvents.value = WsEvent.Connected
                                 // ← 自动重连成功
                                 currentHost?.let { repo.saveLastHost(it) }
+                                sendUserBindIfLoggedIn()
+                            }
+                            text.contains("\"event\":\"rep_data\"") -> {
+                                // 解析 "rep_data" 数据
+                                val jsonObject = JSONObject(text)
+                                val exercise = jsonObject.getInt("exercise")
+                                val rep = jsonObject.getInt("rep")
+                                val score = jsonObject.getDouble("score")
+
+                                // 更新 StateFlow
+                                _wsEvents.value = WsEvent.ExerciseData(exercise, rep, score)
+                            }
+                            // 过滤掉包含 "setUser" 和 "user_bound" 的消息，不更新 _wsEvents
+                            text.contains("\"event\":\"setUser\"") || text.contains("\"event\":\"user_bound\"") -> {
+                                return@launch
                             }
                             else -> {
+                                // 处理其他正常数据
                                 _wsEvents.value = WsEvent.Data(text)
                             }
+
                         }
                     }
                 }
@@ -89,9 +111,33 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
             })
-            client.dispatcher.executorService.shutdown()
+
         }
     }
+
+        /** 新增：在外面调用，发送文本消息给设备 */
+        fun sendMessage(text: String) {
+            viewModelScope.launch(Dispatchers.IO) {
+                webSocket?.send(text)
+            }
+        }
+
+    private fun sendUserBindIfLoggedIn() {
+        val uid = runCatching { UserSession.uid }.getOrNull() ?: return
+
+        // 构造 JSON：有 hwWeight 就带上；没有就只发 uid
+        val obj = JSONObject().apply {
+            put("event", "setUser")
+            put("userId", uid)
+            UserSession.hwWeight?.let { hw ->
+                // 可选：避免无效值，如果 <= 0 则不发送
+                if (hw > 0f) put("hwWeight", hw)
+            }
+        }
+
+        webSocket?.send(obj.toString())
+    }
+
 
     fun disconnect() {
         webSocket?.close(1000, null)

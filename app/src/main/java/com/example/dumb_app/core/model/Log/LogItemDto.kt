@@ -8,7 +8,7 @@ data class LogItemDto(
     val recordId:   Int,          // 外键，对应 LogSessionDto.recordId
     val type:       Int,
     val tOrder:     Int,
-    val tWeight:    Int,
+    val tWeight:    Float,
     val num:        Int,
     val avgScore:   Int
 )

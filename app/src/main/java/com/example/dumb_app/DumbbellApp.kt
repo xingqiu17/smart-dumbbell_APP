@@ -15,6 +15,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.dumb_app.navigation.NavGraph
 import com.example.dumb_app.ui.component.BottomNavigationBar
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
+import androidx.activity.compose.LocalActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,7 +28,9 @@ fun DumbbellApp() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: "workout"
 
-    // 判断是否为登录或注册界面
+    val activity = LocalActivity.current as ComponentActivity           // ← 转成 ViewModelStoreOwner
+    val wifiVm = viewModel<WifiScanViewModel>(viewModelStoreOwner = activity)
+
     val noBottomBarRoutes = listOf("login", "register")
     val showBottomBar = currentRoute !in noBottomBarRoutes
 
@@ -50,8 +57,8 @@ fun DumbbellApp() {
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
         ) {
-            // 统一调用 NavGraph，所有路由都在 NavGraph.kt 中注册
-            NavGraph(navController = navController)
+            // ✅ 把共享的 wifiVm 传给 NavGraph
+            NavGraph(navController = navController, wifiVm = wifiVm)
         }
     }
 }

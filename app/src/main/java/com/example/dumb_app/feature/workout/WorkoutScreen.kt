@@ -24,7 +24,11 @@ import com.example.dumb_app.feature.record.PlanUiState
 import com.example.dumb_app.feature.record.RecordViewModel
 import com.example.dumb_app.core.model.Plan.PlanDayDto
 import com.example.dumb_app.core.model.Plan.PlanItemDto
+import com.example.dumb_app.core.util.TrainingSession
 import java.time.LocalDate
+import org.json.JSONArray
+import org.json.JSONObject
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +43,24 @@ fun WorkoutScreen(
             wifiVm.connectToDevice(host)
         }
     }
+
+    // 构造下发给硬件的 JSON
+    fun buildStartTrainingJson(items: List<PlanItemDto>): String {
+        return JSONObject().apply {
+            put("event", "start_training")
+            put("sets", items.size)
+            put("items", JSONArray().also { arr ->
+                items.forEach { it ->
+                    arr.put(JSONObject().apply {
+                        put("type", it.type)
+                        put("reps", it.number)
+                        put("weight", it.tWeight)
+                    })
+                }
+            })
+        }.toString()
+    }
+
 
     // 监听 WS 连接状态
     val wsEvent by wifiVm.wsEvents.collectAsState()
@@ -188,10 +210,25 @@ fun WorkoutScreen(
                                             }
                                             Button(onClick = {
                                                 showSheet = false
-                                                // TODO: 发送训练信息给设备
+
+                                                // A) 保存当前选择
+                                                val sid = day.session.sessionId ?: return@Button
+                                                TrainingSession.update(
+                                                    sessionId = sid,
+                                                    items = day.items,
+                                                    title = "计划 ${idx + 1}"
+                                                )
+
+                                                // B) 下发 JSON 给设备
+                                                val payload = buildStartTrainingJson(day.items)
+                                                wifiVm.sendMessage(payload)
+
+                                                // C) 跳转到训练界面（无参路由）
+                                                nav.navigate("training")
                                             }) {
                                                 Text("开始训练")
                                             }
+
                                         }
                                         Divider()
                                     }

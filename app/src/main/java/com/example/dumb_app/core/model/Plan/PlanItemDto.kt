@@ -1,5 +1,7 @@
 package com.example.dumb_app.core.model.Plan
 
+import com.google.gson.annotations.SerializedName
+
 /**
  * 对应后端 plan_item 表
  *
@@ -10,11 +12,11 @@ package com.example.dumb_app.core.model.Plan
  *       做自定义映射，或再加一个 PlanSessionLite。
  */
 data class PlanItemDto(
-    val itemId:    Int? = null,   // 新建时可为空
-    val sessionId: Int,           // 外键
-    val type:      Int,
-    val number:    Int,
-    val tOrder:    Int,
-    val tWeight:   Int,
-    val complete:  Boolean
+    @SerializedName("itemId")   val itemId: Int? = null,
+    @SerializedName("session")  val session: PlanSessionDto? = null, // ← 接收嵌套对象，别用 sessionId
+    @SerializedName("type")     val type: Int,
+    @SerializedName("number")   val number: Int,
+    @SerializedName("torder")   val tOrder: Int,     // 小写键 → 驼峰字段，必须加 @SerializedName
+    @SerializedName("tweight")  val tWeight: Float,  // 同上；服务端返回 2 也能转成 2.0
+    @SerializedName("complete") val complete: Boolean
 )

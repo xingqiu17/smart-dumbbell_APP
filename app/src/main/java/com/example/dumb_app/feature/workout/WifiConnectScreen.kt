@@ -115,13 +115,17 @@ fun WifiConnectScreen(nav: NavController) {
         ) {
             // 连接状态提示
             wsEvent?.let { evt ->
-                val msg = when(evt) {
+                val msg = when (evt) {
                     WifiScanViewModel.WsEvent.PairRequested -> "请在设备端确认配对"
-                    WifiScanViewModel.WsEvent.Paired       -> "配对成功！"
-                    WifiScanViewModel.WsEvent.Connected    -> "已自动连接设备"
-                    is WifiScanViewModel.WsEvent.Error     -> "连接错误：${evt.msg}"
-                    is WifiScanViewModel.WsEvent.Data      -> "收到数据：${evt.payload}"
-                    null                                   -> ""
+                    WifiScanViewModel.WsEvent.Paired -> "配对成功！"
+                    WifiScanViewModel.WsEvent.Connected -> "已自动连接设备"
+                    is WifiScanViewModel.WsEvent.Error -> "连接错误：${evt.msg}"
+                    is WifiScanViewModel.WsEvent.Data -> "收到数据：${evt.payload}"
+                    is WifiScanViewModel.WsEvent.ExerciseData -> {
+                        // 具体显示运动数据
+                        "运动编号: ${evt.exercise}\n次数: ${evt.rep}\n得分: ${evt.score}"
+                    }
+                    null -> ""
                 }
                 if (msg.isNotEmpty()) {
                     Text(msg, style = MaterialTheme.typography.bodyMedium)

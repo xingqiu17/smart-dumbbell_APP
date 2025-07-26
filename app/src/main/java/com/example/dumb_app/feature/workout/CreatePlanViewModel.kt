@@ -114,7 +114,7 @@ class CreatePlanViewModel(
                         },
                         number  = row.quantity.toIntOrNull() ?: 0,
                         tOrder  = idx + 1,
-                        tWeight = 0
+                        tWeight = 0.0f
                     )
                 }
 
