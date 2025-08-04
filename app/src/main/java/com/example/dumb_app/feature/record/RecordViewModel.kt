@@ -4,12 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dumb_app.core.model.Plan.PlanDayDto
 import com.example.dumb_app.core.model.Log.LogDayDto
-import com.example.dumb_app.core.model.Log.LogWorkDto   // ← 新增
+import com.example.dumb_app.core.model.Log.LogWorkDto
 import com.example.dumb_app.core.repository.TrainingRepository
 import com.example.dumb_app.core.repository.LogRepository
 import com.example.dumb_app.core.util.ServiceLocator
-import kotlinx.coroutines.async                         // ← 新增
-import kotlinx.coroutines.awaitAll                      // ← 新增
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -29,39 +29,51 @@ sealed interface LogUiState {
     data class Error(val msg: String) : LogUiState
 }
 
+/** 新增：用于“当日全部训练记录”的 UI 状态 */
+sealed interface LogListUiState {
+    object Loading : LogListUiState
+    object Empty   : LogListUiState
+    data class Success(val records: List<LogDayDto>) : LogListUiState
+    data class Error(val msg: String) : LogListUiState
+}
+
 class RecordViewModel(
     private val planRepo: TrainingRepository = ServiceLocator.trainingRepository,
     private val logRepo:  LogRepository      = ServiceLocator.logRepository
 ) : ViewModel() {
 
-    // 训练计划状态
+    // 训练计划
     private val _planState = MutableStateFlow<PlanUiState>(PlanUiState.Loading)
     val planState: StateFlow<PlanUiState> = _planState
 
-    // 训练记录状态（“当天最新一条”或你选择的一条）
+    // “单条”训练记录（保留，避免影响其它页面）
     private val _logState = MutableStateFlow<LogUiState>(LogUiState.Loading)
     val logState: StateFlow<LogUiState> = _logState
 
-    // 当前在详情页展示的那条记录
+    // “当日全部”训练记录（RecordScreen 用这个）
+    private val _logListState = MutableStateFlow<LogListUiState>(LogListUiState.Loading)
+    val logListState: StateFlow<LogListUiState> = _logListState
+
+    // 详情页当前选中的记录
     private val _selectedLog = MutableStateFlow<LogDayDto?>(null)
     val selectedLog: StateFlow<LogDayDto?> = _selectedLog
 
-    // 已训练日期集合
+    // 已训练日期（用于日历高亮）
     private val _trainingDates = MutableStateFlow<List<LocalDate>>(emptyList())
     val trainingDates: StateFlow<List<LocalDate>> = _trainingDates
 
-    // 新增：每个 groupId 的 works 明细缓存
+    // 每个 groupId 的 works 明细缓存
     private val _worksMap = MutableStateFlow<Map<Int, List<LogWorkDto>>>(emptyMap())
     val worksMap: StateFlow<Map<Int, List<LogWorkDto>>> = _worksMap
 
     fun selectLog(log: LogDayDto) {
         _selectedLog.value = log
-        _worksMap.value = emptyMap() // 切换选中记录时，清空上一次的 works 缓存
+        _worksMap.value = emptyMap()
     }
 
     fun clearSelectedLog() {
         _selectedLog.value = null
-        _worksMap.value = emptyMap() // 退出详情页时同步清空
+        _worksMap.value = emptyMap()
     }
 
     /** 拉取指定日期的所有训练计划会话 */
@@ -70,11 +82,8 @@ class RecordViewModel(
         viewModelScope.launch {
             runCatching { planRepo.getDayPlans(date) }
                 .onSuccess { list ->
-                    _planState.value = if (list.isEmpty()) {
-                        PlanUiState.Empty
-                    } else {
-                        PlanUiState.Success(list)
-                    }
+                    _planState.value = if (list.isEmpty()) PlanUiState.Empty
+                    else PlanUiState.Success(list)
                 }
                 .onFailure {
                     _planState.value = PlanUiState.Error(it.message ?: "网络错误")
@@ -82,45 +91,50 @@ class RecordViewModel(
         }
     }
 
-    /** 拉取指定日期的“最新一条”训练记录（LogRepository 已封装取最大 recordId） */
+    /**（保留）拉“当天最新一条” */
     fun loadLogs(date: String) {
         _logState.value = LogUiState.Loading
         viewModelScope.launch {
             val dto = runCatching { logRepo.getDayRecords(date) }.getOrNull()
-            _logState.value = if (dto == null || dto.session == null) {
-                LogUiState.Empty
-            } else {
-                LogUiState.Success(dto)
-            }
+            _logState.value = if (dto == null || dto.session == null) LogUiState.Empty
+            else LogUiState.Success(dto)
         }
     }
 
-    /** 拉取一批日期里哪些当天有训练（仅作“是否有记录”的判断） */
+    /** 新增：拉取“当日全部训练记录”列表 */
+    fun loadLogsAll(date: String) {
+        _logListState.value = LogListUiState.Loading
+        viewModelScope.launch {
+            val list = runCatching { logRepo.getDayRecordsAll(date) }.getOrElse { emptyList() }
+            // 按 recordId 升序（或你想要的顺序）
+            val sorted = list.sortedBy { it.session.recordId ?: 0 }
+            _logListState.value = if (sorted.isEmpty()) LogListUiState.Empty
+            else LogListUiState.Success(sorted)
+        }
+    }
+
+    /** 批量判断哪些日期有训练记录（用“列表接口”，有任意一条就算训练日） */
     fun loadTrainingDates(dates: List<LocalDate>) {
         viewModelScope.launch {
             val trainedDates = dates.mapNotNull { d ->
-                runCatching { logRepo.getDayRecords(d.toString()) }
-                    .getOrNull()
-                    ?.takeIf { it.session != null }
-                    ?.session
-                    ?.date
-                    ?.let { LocalDate.parse(it) }
+                runCatching { logRepo.getDayRecordsAll(d.toString()) }
+                    .getOrElse { emptyList() }
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { d }
             }
             _trainingDates.value = trainedDates
         }
     }
 
-    /** 新增：按一组 groupId 批量加载 works，并合并进缓存（幂等，已加载过的不再请求） */
+    /** 批量加载 works，并合并进缓存（已加载过的不再请求） */
     fun loadWorksFor(groupIds: List<Int>) {
         viewModelScope.launch {
             val existing = _worksMap.value
-            val need = groupIds.filter { it !in existing.keys }.distinct()
+            val need = groupIds.filter { it !in existing }.distinct()
             if (need.isEmpty()) return@launch
-
             val fetched = need.map { gid ->
                 async { gid to runCatching { logRepo.listWorksByGroup(gid) }.getOrElse { emptyList() } }
             }.awaitAll().toMap()
-
             _worksMap.value = existing + fetched
         }
     }

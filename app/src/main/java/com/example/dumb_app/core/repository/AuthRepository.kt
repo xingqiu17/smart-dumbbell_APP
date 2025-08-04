@@ -31,6 +31,16 @@ class AuthRepository(
         return user
     }
 
+    /** 从后端拉取最新的用户信息并更新本地缓存 */
+    suspend fun fetchProfile(): UserDto {
+        val uid = UserSession.uid
+        val user = api.getUser(uid)
+        // 更新全局缓存
+        UserSession.update(user)
+        UserSession.updateHwWeight(user.hwWeight)
+        return user
+    }
+
     /** 更新训练数据：直接用缓存里的 uid */
     suspend fun updateTrainData(aim: Int, hwWeight: Float): UserDto {
         val uid = UserSession.uid

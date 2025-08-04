@@ -19,6 +19,7 @@ import com.example.dumb_app.feature.profile.EditTrainDataScreen
 import com.example.dumb_app.feature.auth.LoginScreen
 import com.example.dumb_app.feature.auth.RegisterScreen
 import com.example.dumb_app.feature.workout.CreatePlanScreen
+import com.example.dumb_app.feature.workout.RestScreen
 import com.example.dumb_app.feature.workout.TrainingScreen
 
 @Composable
@@ -70,6 +71,7 @@ fun NavGraph(
         composable("register") { RegisterScreen(navController) }
         composable("EditTrainData") { EditTrainDataScreen(navController) }
         composable("createPlan") { CreatePlanScreen(navController) }
+        composable("rest") { RestScreen(navController) }
         composable("training") {
             TrainingScreen(
                 navController = navController,

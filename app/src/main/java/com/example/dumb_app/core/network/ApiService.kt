@@ -38,6 +38,11 @@ interface ApiService {
     @POST("v1/users/login")
     suspend fun login(@Body req: LoginReq): UserDto
 
+    @GET("v1/users/{id}")
+    suspend fun getUser(
+        @Path("id") id: Int
+    ): UserDto
+
     /** 更新训练数据（POST，不是 PATCH）*/
     @POST("v1/users/{id}/trainData")
     suspend fun updateTrainData(
