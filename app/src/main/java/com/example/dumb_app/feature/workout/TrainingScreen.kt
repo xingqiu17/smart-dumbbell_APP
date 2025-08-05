@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
@@ -86,6 +87,8 @@ fun TrainingScreen(
     var showFinishDialog by rememberSaveable { mutableStateOf(false) }
     // 确保后台保存只触发一次
     var hasSubmitted by rememberSaveable { mutableStateOf(false) }
+    // 退出提示弹窗
+    var showExitDialog by rememberSaveable { mutableStateOf(false) }
 
     val currentItem = items.getOrNull(currentSetIndex)
     val initialType = currentItem?.type ?: 0
@@ -355,7 +358,38 @@ fun TrainingScreen(
                 Text(score?.let { String.format("%.1f", it) } ?: "--",
                     style = MaterialTheme.typography.headlineLarge)
             }
+            Spacer(Modifier.height(24.dp))
+
+            Button(
+                onClick = {
+                    Log.d(TAG_TS, "exit training clicked")
+                    showExitDialog = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+            ) {
+                Text("退出训练", color = Color.White)
+            }
         }
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("退出训练") },
+            text = { Text("确定要退出训练吗？未完成动作将记为0分。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Log.d(TAG_TS, "exit confirmed -> save and exit")
+                    vm.savePartialTraining(UserSession.uid)
+                    wifiVm.sendExitTraining()
+                    TrainingSession.clear()
+                    navController.popBackStack("workout", false)
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     // —— 训练完成弹窗（仅提示 + 确定） —— //

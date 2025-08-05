@@ -112,7 +112,7 @@ fun TrainingRecordDetailScreen(
                         val works = worksMap[item.groupId].orEmpty()  // ← 改为从 VM 的 worksMap 获取
                         GroupRecord(
                             groupNumber   = idx + 1,
-                            actionName    = "类型${item.type}",
+                            actionName    = exerciseNameOf(item.type),
                             actionRecords = works.map { ActionRecord(it.score) }
                         )
                     }
@@ -280,4 +280,13 @@ fun TrainingRecordDetailScreen(
             }
         }
     }
+}
+/** 简单动作名映射 */
+private fun exerciseNameOf(type: Int): String = when (type) {
+    1 -> "哑铃弯举"
+    2 -> "肩推"
+    3 -> "卧推"
+    4 -> "划船"
+    5 -> "深蹲"
+    else -> "动作$type"
 }

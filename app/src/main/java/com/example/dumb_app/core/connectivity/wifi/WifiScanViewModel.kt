@@ -2,6 +2,7 @@ package com.example.dumb_app.core.connectivity.wifi
 
 import android.app.Application
 import android.net.wifi.ScanResult
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dumb_app.core.repository.PairingRepository
@@ -17,6 +18,9 @@ import okhttp3.*
 import java.util.UUID
 
 class WifiScanViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        private const val TAG_WSVM = "WifiScanViewModel"
+    }
     private val scanner = WifiScanner(application)
     private val repo    = PairingRepository(application)
 
@@ -115,12 +119,25 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-        /** 新增：在外面调用，发送文本消息给设备 */
-        fun sendMessage(text: String) {
-            viewModelScope.launch(Dispatchers.IO) {
-                webSocket?.send(text)
-            }
+    /** 新增：在外面调用，发送文本消息给设备 */
+    fun sendMessage(text: String) {
+        Log.d(TAG_WSVM, "sendMessage -> $text")
+        viewModelScope.launch(Dispatchers.IO) {
+            webSocket?.send(text)
         }
+    }
+
+    fun sendSkipRest() {
+        val payload = "{\"event\":\"skip_rest\"}"
+        Log.d(TAG_WSVM, "sendSkipRest")
+        sendMessage(payload)
+    }
+
+    fun sendExitTraining() {
+        val payload = "{\"event\":\"exit_training\"}"
+        Log.d(TAG_WSVM, "sendExitTraining")
+        sendMessage(payload)
+    }
 
     private fun sendUserBindIfLoggedIn() {
         val uid = runCatching { UserSession.uid }.getOrNull() ?: return

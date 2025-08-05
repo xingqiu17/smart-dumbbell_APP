@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
 import kotlinx.coroutines.delay
 
 private const val TAG_RS = "RestScreen"
@@ -24,6 +26,7 @@ private const val TRAINING_ROUTE = "training"
 @Composable
 fun RestScreen(
     navController: NavController,
+    wifiVm: WifiScanViewModel,
     totalSeconds: Int = 5
 ) {
     var secondsRemaining by remember { mutableStateOf(totalSeconds) }
@@ -53,15 +56,37 @@ fun RestScreen(
         animationSpec = tween(durationMillis = 400, easing = LinearEasing)
     )
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(
-            progress = progress,
-            strokeWidth = 8.dp,
-            modifier = Modifier.size(200.dp)
-        )
-        Text(
-            text = secondsRemaining.toString(),
-            style = MaterialTheme.typography.headlineLarge
-        )
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(
+                progress = progress,
+                strokeWidth = 8.dp,
+                modifier = Modifier.size(200.dp)
+            )
+            Text(
+                text = secondsRemaining.toString(),
+                style = MaterialTheme.typography.headlineLarge
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Button(onClick = {
+            Log.d(TAG_RS, "skip rest clicked")
+            wifiVm.sendSkipRest()
+            runCatching {
+                val trainingEntry = navController.getBackStackEntry(TRAINING_ROUTE)
+                trainingEntry.savedStateHandle.set("advanceSet", true)
+            }.onFailure {
+                Log.e(TAG_RS, "failed to set advanceSet on skip: ${it.message}", it)
+            }
+            navController.popBackStack()
+        }) {
+            Text("跳过休息")
+        }
     }
 }

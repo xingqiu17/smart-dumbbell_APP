@@ -1,5 +1,6 @@
 package com.example.dumb_app.feature.workout
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dumb_app.core.model.Log.LogDayCreateReq
@@ -43,6 +44,10 @@ class TrainingViewModel(
     private val repo: TrainingRepository,
     private val logRepo: LogRepository = LogRepository(NetworkModule.apiService)
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG_TVM = "TrainingViewModel"
+    }
 
     /** UI 进度/错误状态 */
     private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
@@ -118,6 +123,16 @@ class TrainingViewModel(
             pi.lastRep = pi.works.size
         }
         _pendingItems.value = list
+    }
+
+    /** 保存当前累计数据，未完成部分补 0 后写入日志 */
+    fun savePartialTraining(userId: Int) {
+        Log.d(TAG_TVM, "savePartialTraining: userId=$userId")
+        fillMissingZeros()
+        val dateStr = LocalDate.now().format(DateTimeFormatter.ISO_DATE)
+        val req = buildLogDayCreateReq(userId = userId, date = dateStr)
+        Log.d(TAG_TVM, "built req: $req")
+        saveLog(req)
     }
 
     /** 生成 LogDayCreateReq（用于 Screen 弹窗确认后提交） */

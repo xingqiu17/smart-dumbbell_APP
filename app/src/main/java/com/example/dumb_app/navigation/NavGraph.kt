@@ -71,7 +71,7 @@ fun NavGraph(
         composable("register") { RegisterScreen(navController) }
         composable("EditTrainData") { EditTrainDataScreen(navController) }
         composable("createPlan") { CreatePlanScreen(navController) }
-        composable("rest") { RestScreen(navController) }
+        composable("rest") { RestScreen(navController, wifiVm) }
         composable("training") {
             TrainingScreen(
                 navController = navController,
