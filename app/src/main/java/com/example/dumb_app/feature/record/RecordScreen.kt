@@ -258,10 +258,28 @@ fun RecordScreen(
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(currentItems) { idx, item ->
+
+                            /* ===== 动作类型映射 ===== */
+                            val actionName = when (item.type) {
+                                1    -> "哑铃弯举"
+                                else -> "未知动作（type=${item.type}）"   // 其他类型先占位，可后续补充映射
+                            }
+
+                            /* ===== 动作行 ===== */
                             Text(
-                                text = "${idx + 1}. 类型${item.type} × ${item.number}次，配重${item.tWeight}",
+                                text = "${idx + 1}. $actionName × ${item.number} 次，配重 ${item.tWeight}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
+
+                            /* ===== 休息时间行 ===== */
+                            val restSec = item.rest ?: 0
+                            if (restSec > 0) {
+                                Text(
+                                    text  = "   └ 休息 $restSec 秒",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(16.dp))

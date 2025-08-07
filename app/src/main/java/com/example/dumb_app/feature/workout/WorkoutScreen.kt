@@ -45,9 +45,10 @@ fun WorkoutScreen(
     }
 
     // 构造下发给硬件的 JSON
-    fun buildStartTrainingJson(items: List<PlanItemDto>): String {
+    fun buildStartTrainingJson(sid: Int,items: List<PlanItemDto>): String {
         return JSONObject().apply {
             put("event", "start_training")
+            put("sessionId", sid)
             put("sets", items.size)
             put("items", JSONArray().also { arr ->
                 items.forEach { it ->
@@ -223,7 +224,7 @@ fun WorkoutScreen(
                                                 )
 
                                                 // B) 下发 JSON 给设备
-                                                val payload = buildStartTrainingJson(day.items)
+                                                val payload = buildStartTrainingJson(sid,day.items)
                                                 wifiVm.sendMessage(payload)
 
                                                 // C) 跳转到训练界面（无参路由）
@@ -263,19 +264,36 @@ fun WorkoutScreen(
                     text = {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             itemsIndexed(currentItems) { idx, item ->
+
+                                /* ===== 动作类型映射 ===== */
+                                val actionName = when (item.type) {
+                                    1    -> "哑铃弯举"
+                                    else -> "未知动作（type=${item.type}）"   // 其他类型占位
+                                }
+
+                                /* ===== 动作行 ===== */
                                 Text(
-                                    "${idx + 1}. 类型${item.type} × ${item.number}次，配重${item.tWeight}",
+                                    "${idx + 1}. $actionName × ${item.number} 次，配重 ${item.tWeight}",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
+
+                                /* ===== 休息时间行 ===== */
+                                val restSec = item.rest ?: 0
+                                if (restSec > 0) {
+                                    Text(
+                                        "   └ 休息 $restSec 秒",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { showDetail = false }) {
-                            Text("关闭")
-                        }
+                        TextButton(onClick = { showDetail = false }) { Text("关闭") }
                     }
                 )
+
             }
         }
     }

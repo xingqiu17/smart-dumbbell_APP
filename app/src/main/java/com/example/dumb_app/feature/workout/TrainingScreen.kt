@@ -238,9 +238,9 @@ fun TrainingScreen(
                         userId = UserSession.uid,
                         date   = dateStr
                     )
-                    vm.saveLog(req)
+                    //vm.saveLog(req)
                     // 尝试标记计划完成（失败也不提示，不影响退出）
-                    vm.markPlanComplete()
+                    //vm.markPlanComplete()   调试注释
                 }
 
                 // 调试输出：逐组汇总（来自 VM）

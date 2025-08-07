@@ -18,5 +18,5 @@ data class PlanItemDto(
     @SerializedName("number")   val number: Int,
     @SerializedName("torder")   val tOrder: Int,     // 小写键 → 驼峰字段，必须加 @SerializedName
     @SerializedName("tweight")  val tWeight: Float,  // 同上；服务端返回 2 也能转成 2.0
-    @SerializedName("complete") val complete: Boolean
+    @SerializedName("rest") val rest: Int
 )
