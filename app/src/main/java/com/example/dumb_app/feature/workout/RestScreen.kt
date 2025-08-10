@@ -19,18 +19,38 @@ import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
 import kotlinx.coroutines.delay
 
 private const val TAG_RS = "RestScreen"
-
-// ⚠️ 把这个改成你训练页在 NavGraph 中的 route 字符串
 private const val TRAINING_ROUTE = "training"
 
 @Composable
 fun RestScreen(
     navController: NavController,
     wifiVm: WifiScanViewModel,
-    totalSeconds: Int = 5
+    totalSeconds: Int
 ) {
     var secondsRemaining by remember { mutableStateOf(totalSeconds) }
 
+    // ✅ 1. 将“跳过并进入下一组”的操作提取为公共函数
+    val advanceToNextSet = {
+        runCatching {
+            val trainingEntry = navController.getBackStackEntry(TRAINING_ROUTE)
+            trainingEntry.savedStateHandle.set("advanceSet", true)
+        }.onFailure {
+            Log.e(TAG_RS, "failed to set advanceSet on handle: ${it.message}", it)
+        }
+        navController.popBackStack()
+    }
+
+    // ✅ 2. 监听来自设备的 "rest_skipped" 事件
+    val wsEvent by wifiVm.wsEvents.collectAsState(initial = null)
+    LaunchedEffect(wsEvent) {
+        if (wsEvent is WifiScanViewModel.WsEvent.RestSkipped) {
+            Log.d(TAG_RS, "Received skip rest signal from device.")
+            advanceToNextSet()      // 执行公共操作
+            wifiVm.clearEvent()     // 消费事件
+        }
+    }
+
+    // 倒计时逻辑保持不变
     LaunchedEffect(Unit) {
         Log.d(TAG_RS, "enter rest, totalSeconds=$totalSeconds")
         while (secondsRemaining > 0) {
@@ -39,16 +59,8 @@ fun RestScreen(
             Log.d(TAG_RS, "tick: secondsRemaining=$secondsRemaining")
         }
 
-        // 直接拿“训练页”的 BackStackEntry，写入 advanceSet
-        runCatching {
-            val trainingEntry = navController.getBackStackEntry(TRAINING_ROUTE)
-            Log.d(TAG_RS, "countdown finished -> set advanceSet=true on training handle, then pop")
-            trainingEntry.savedStateHandle.set("advanceSet", true)
-        }.onFailure {
-            Log.e(TAG_RS, "failed to set advanceSet on training handle: ${it.message}", it)
-        }
-
-        navController.popBackStack() // 返回训练页
+        Log.d(TAG_RS, "countdown finished -> advancing to next set")
+        advanceToNextSet() // 倒计时结束时也调用公共操作
     }
 
     val progress by animateFloatAsState(
@@ -61,6 +73,7 @@ fun RestScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // UI部分保持不变
         Box(contentAlignment = Alignment.Center) {
             CircularProgressIndicator(
                 progress = progress,
@@ -75,16 +88,13 @@ fun RestScreen(
 
         Spacer(Modifier.height(24.dp))
 
+        // ✅ 3. 修改按钮点击事件，使其也调用公共函数
         Button(onClick = {
-            Log.d(TAG_RS, "skip rest clicked")
+            Log.d(TAG_RS, "skip rest button clicked")
+            // 首先通知设备，App执行了跳过操作
             wifiVm.sendSkipRest()
-            runCatching {
-                val trainingEntry = navController.getBackStackEntry(TRAINING_ROUTE)
-                trainingEntry.savedStateHandle.set("advanceSet", true)
-            }.onFailure {
-                Log.e(TAG_RS, "failed to set advanceSet on skip: ${it.message}", it)
-            }
-            navController.popBackStack()
+            // 然后执行UI跳转
+            advanceToNextSet()
         }) {
             Text("跳过休息")
         }

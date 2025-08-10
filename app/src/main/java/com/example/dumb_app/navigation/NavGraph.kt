@@ -21,6 +21,8 @@ import com.example.dumb_app.feature.auth.RegisterScreen
 import com.example.dumb_app.feature.workout.CreatePlanScreen
 import com.example.dumb_app.feature.workout.RestScreen
 import com.example.dumb_app.feature.workout.TrainingScreen
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 @Composable
 fun NavGraph(
@@ -71,7 +73,23 @@ fun NavGraph(
         composable("register") { RegisterScreen(navController) }
         composable("EditTrainData") { EditTrainDataScreen(navController) }
         composable("createPlan") { CreatePlanScreen(navController) }
-        composable("rest") { RestScreen(navController, wifiVm) }
+        composable(
+            // 1. Define the route with a placeholder for the "time" argument
+            route = "rest/{time}",
+            // 2. Specify that the "time" argument is an Integer
+            arguments = listOf(navArgument("time") { type = NavType.IntType })
+        ) { backStackEntry ->
+            // 3. Retrieve the integer value from the navigation arguments.
+            //    Provide a safe default (e.g., 60 seconds) if it's somehow not passed.
+            val time = backStackEntry.arguments?.getInt("time") ?: 5
+
+            // 4. Pass the retrieved time to the RestScreen's `totalSeconds` parameter.
+            RestScreen(
+                navController = navController,
+                wifiVm = wifiVm,
+                totalSeconds = time
+            )
+        }
         composable("training") {
             TrainingScreen(
                 navController = navController,

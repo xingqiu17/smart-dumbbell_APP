@@ -27,15 +27,23 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
     // 扫描结果
     private val _scanResults = MutableStateFlow<List<ScanResult>>(emptyList())
     val scanResults: StateFlow<List<ScanResult>> = _scanResults
+    data class TrainingPlanItem(val type: Int, val reps: Int, val weight: Double, val rest: Int)
 
     // WS 事件
     sealed class WsEvent {
         object PairRequested : WsEvent()
         object Paired       : WsEvent()
         object Connected    : WsEvent()
+        object RestSkipped : WsEvent()
+        object TrainingExited : WsEvent()
         data class Error(val msg: String): WsEvent()
         data class Data(val payload: String): WsEvent()
         data class ExerciseData(val exercise: Int, val rep: Int, val score: Double) : WsEvent()
+        data class TrainingStarted(
+            val sessionId: Long,
+            val date: String,
+            val items: List<TrainingPlanItem>
+        ) : WsEvent()
     }
     private val _wsEvents = MutableStateFlow<WsEvent?>(null)
     val wsEvents: StateFlow<WsEvent?> = _wsEvents
@@ -85,6 +93,39 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
                                 // ← 自动重连成功
                                 currentHost?.let { repo.saveLastHost(it) }
                                 sendUserBindIfLoggedIn()
+                            }
+                            text.contains("\"event\":\"rest_skipped\"") -> {
+                                _wsEvents.value = WsEvent.RestSkipped
+                            }
+                            text.contains("\"event\":\"training_exited\"") -> {
+                                _wsEvents.value = WsEvent.TrainingExited
+                            }
+                            text.contains("\"event\":\"training_started\"") -> {
+                                try {
+                                    val json = JSONObject(text)
+                                    val itemsJson = json.getJSONArray("items")
+                                    val itemsList = mutableListOf<TrainingPlanItem>()
+                                    for (i in 0 until itemsJson.length()) {
+                                        val itemObj = itemsJson.getJSONObject(i)
+                                        itemsList.add(
+                                            TrainingPlanItem(
+                                                type = itemObj.getInt("type"),
+                                                reps = itemObj.getInt("reps"),
+                                                weight = itemObj.getDouble("weight"),
+                                                rest = itemObj.getInt("rest")
+                                            )
+                                        )
+                                    }
+                                    _wsEvents.value = WsEvent.TrainingStarted(
+                                        sessionId = json.getLong("sessionId"),
+                                        date = json.getString("date"),
+                                        items = itemsList
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(TAG_WSVM, "Failed to parse training_started event", e)
+                                    // 解析失败，可以发送一个错误事件
+                                    _wsEvents.value = WsEvent.Error("解析训练计划失败: ${e.message}")
+                                }
                             }
                             text.contains("\"event\":\"rep_data\"") -> {
                                 // 解析 "rep_data" 数据
@@ -165,5 +206,9 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
         super.onCleared()
         scanner.stopScan()
         disconnect()
+    }
+
+    fun clearEvent() {
+        _wsEvents.value = null
     }
 }

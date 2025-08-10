@@ -121,6 +121,9 @@ fun WifiConnectScreen(nav: NavController) {
                     WifiScanViewModel.WsEvent.Connected -> "已自动连接设备"
                     is WifiScanViewModel.WsEvent.Error -> "连接错误：${evt.msg}"
                     is WifiScanViewModel.WsEvent.Data -> "收到数据：${evt.payload}"
+                    is WifiScanViewModel.WsEvent.TrainingStarted -> "开始训练"
+                    is WifiScanViewModel.WsEvent.RestSkipped -> "跳过休息"
+                    is WifiScanViewModel.WsEvent.TrainingExited -> "退出训练"
                     is WifiScanViewModel.WsEvent.ExerciseData -> {
                         // 具体显示运动数据
                         "运动编号: ${evt.exercise}\n次数: ${evt.rep}\n得分: ${evt.score}"

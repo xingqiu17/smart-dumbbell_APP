@@ -112,7 +112,13 @@ fun TrainingScreen(
             trainingEntryState.value = null
         }
     }
+
+
+
+
     val trainingHandle = trainingEntryState.value?.savedStateHandle
+
+
 
     // 恢复等待状态
     LaunchedEffect(trainingHandle) {
@@ -161,13 +167,26 @@ fun TrainingScreen(
     val wsEvent by wifiVm.wsEvents.collectAsState(initial = null)
     LaunchedEffect(wsEvent) {
         if (wsEvent == null) return@LaunchedEffect
-        if (inRest) {
-            Log.d(TAG_TS, "wsEvent ignored: inRest=true, event=$wsEvent")
-            return@LaunchedEffect
-        }
+
 
         when (val e = wsEvent) {
+
+
+            // ✅ 新增：处理设备发来的“退出训练”事件
+            is WsEvent.TrainingExited -> {
+                Log.d(TAG_TS, "Device requested to exit training.")
+                // 执行与用户点击“确认退出”相同的逻辑
+                vm.savePartialTraining(UserSession.uid)
+                TrainingSession.clear()
+                navController.popBackStack("workout", false) // 返回到训练计划列表页
+                wifiVm.clearEvent() // 消费事件
+            }
+
             is WsEvent.ExerciseData -> {
+                if (inRest) {
+                    Log.d(TAG_TS, "wsEvent ignored: inRest=true, event=$wsEvent")
+                    return@LaunchedEffect
+                }
                 val cur = currentItem ?: return@LaunchedEffect
                 if (e.exercise != cur.type) return@LaunchedEffect
 
@@ -223,9 +242,14 @@ fun TrainingScreen(
             finishTriggered = true
             Log.d(TAG_TS, "SET COMPLETED -> setIndex=$currentSetIndex, totalSets=$totalSets")
             if (currentSetIndex < totalSets - 1) {
+                // ✅ 获取当前组设定的休息时间，如果未设定则默认为60秒
+                val restTime = items.getOrNull(currentSetIndex)?.rest ?: 60
+
                 inRest = true
                 trainingHandle?.set("awaitingNextSet", true)
-                navController.navigate("rest")
+
+                // ✅ 将休息时间作为参数传递给 rest 路由
+                navController.navigate("rest/$restTime")
             } else {
                 Log.d(TAG_TS, "ALL SETS DONE -> autosave & show done dialog")
                 // —— 仅触发一次的后台保存（无 UI 干预，不显示错误）——
