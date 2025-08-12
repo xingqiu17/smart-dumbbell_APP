@@ -56,6 +56,7 @@ fun WorkoutScreen(
                         put("type", it.type)
                         put("reps", it.number)
                         put("weight", it.tWeight)
+                        put("rest", it.rest)
                     })
                 }
             })
