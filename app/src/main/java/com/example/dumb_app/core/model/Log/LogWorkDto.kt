@@ -8,5 +8,5 @@ data class LogWorkDto(
     val groupId:  Int,           // 外键，对应 LogItemDto.groupId
     val acOrder:  Int,
     val score:    Int,
-    //val performance: Int
+    val performance: Int
 )

@@ -41,8 +41,8 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-// 明细评分内部结构（可为空）
-private data class ActionRecord(val score: Int)
+// 明细评分内部结构（增加 performance）
+private data class ActionRecord(val score: Int, val performance: Int?)
 
 // 组视图模型（带上真实次数与配重）
 private data class GroupRecord(
@@ -50,8 +50,8 @@ private data class GroupRecord(
     val groupId: Int?,
     val type: Int,
     val actionName: String,
-    val actualReps: Int,    // 实际完成次数：优先明细条数，否则 item.num
-    val weightKg: Float,    // 配重
+    val actualReps: Int,
+    val weightKg: Float,
     val avgScoreFromItem: Int,
     val actionRecords: List<ActionRecord>
 ) {
@@ -81,10 +81,15 @@ fun TrainingRecordDetailScreen(
         if (groupIds.isNotEmpty()) vm.loadWorksFor(groupIds)
     }
 
-    // 颜色：轴线更克制，折线中性，点的颜色由“完成情况”决定
+    // 颜色：轴线更克制，折线中性，点颜色跟“完成情况”映射
     val axisColor = MaterialTheme.colorScheme.outline
     val chartLineColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.75f)
-    val pointStandardColor = Color(0xFF2E7D32) // 标准 -> 绿色
+
+    // —— 主题色先取出来（普通 Color），供普通函数使用 —— //
+    val perfColorStandard = Color(0xFF2E7D32) // 标准 -> 绿色
+    val perfColorSmall    = MaterialTheme.colorScheme.tertiary
+    val perfColorCheat    = MaterialTheme.colorScheme.error
+    val perfColorDefault  = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -125,7 +130,7 @@ fun TrainingRecordDetailScreen(
                             actualReps        = actualReps,
                             weightKg          = item.tWeight,
                             avgScoreFromItem  = item.avgScore,
-                            actionRecords     = works.map { ActionRecord(it.score) }
+                            actionRecords     = works.map { ActionRecord(score = it.score, performance = it.performance) }
                         )
                     }
 
@@ -144,7 +149,6 @@ fun TrainingRecordDetailScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // 顶部两行纯文本（统一字号：比每组“卡路里”的 bodySmall 略大 → bodyMedium）
                     item {
                         Text(
                             "本次训练共消耗了 ${sessionTotalKcal.format1()} kcal",
@@ -172,9 +176,21 @@ fun TrainingRecordDetailScreen(
                             )
                         }
 
-                        // 明细完成情况：暂时全是“标准”，后续你映射真实数据时改这里
-                        val statuses = remember(group.actionRecords) {
-                            List(group.actionRecords.size) { "标准" }
+                        // 完成情况文本（按动作类型 + performance 映射）
+                        val statusTexts = remember(group.actionRecords, group.type) {
+                            group.actionRecords.map { performanceNameOf(group.type, it.performance) }
+                        }
+                        // 完成情况颜色（非 @Composable 函数 + 主题色常量）
+                        val statusColors = remember(group.actionRecords, group.type, perfColorSmall, perfColorCheat, perfColorDefault) {
+                            group.actionRecords.map { ar ->
+                                colorForPerformanceRaw(
+                                    performance = ar.performance,
+                                    cStandard = perfColorStandard,
+                                    cSmall = perfColorSmall,
+                                    cCheat = perfColorCheat,
+                                    cDefault = perfColorDefault
+                                )
+                            }
                         }
 
                         Card(
@@ -202,7 +218,7 @@ fun TrainingRecordDetailScreen(
                                         )
                                     }
                                 }
-                                // 卡路里 + %1RM（组内仍沿用 bodySmall）
+                                // 卡路里 + %1RM
                                 Text(
                                     text = "卡路里：≈ ${calc.kcalTotal.format1()} kcal（%1RM≈${calc.percent1Rm.roundToInt()}%）",
                                     style = MaterialTheme.typography.bodySmall,
@@ -225,7 +241,7 @@ fun TrainingRecordDetailScreen(
                                 )
 
                                 if (expanded) {
-                                    // 表头：新增“完成情况”列
+                                    // 表头
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -245,13 +261,19 @@ fun TrainingRecordDetailScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text("${i + 1}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                                                Text(statuses.getOrNull(i) ?: "标准", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1.2f), textAlign = TextAlign.Center)
+                                                Text(
+                                                    statusTexts.getOrNull(i) ?: "--",
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = statusColors.getOrNull(i) ?: perfColorDefault,
+                                                    modifier = Modifier.weight(1.2f),
+                                                    textAlign = TextAlign.Center
+                                                )
                                                 Text("${rec.score}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                                             }
                                         }
                                     }
 
-                                    // 折线图：点可点击，悬浮窗显示序号/评分/完成情况；点颜色跟完成情况
+                                    // 折线图：点颜色跟完成情况
                                     Spacer(Modifier.height(12.dp))
                                     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
                                     var selectedIndex by remember { mutableStateOf<Int?>(null) }
@@ -289,10 +311,11 @@ fun TrainingRecordDetailScreen(
                                                 .onSizeChanged { size -> canvasSize = size }
                                         ) {
                                             val scores = group.actionRecords.map { it.score.toFloat() }
+                                            val perfs  = group.actionRecords.map { it.performance }
                                             val count = scores.size
                                             if (count >= 1) {
-                                                val w = size.width
-                                                val h = size.height
+                                                val w = size.width.toFloat()
+                                                val h = size.height.toFloat()
                                                 val dx = if (count > 1) w / (count - 1) else w
                                                 val tick = 4.dp.toPx()
                                                 val labelSize = 12.dp.toPx()
@@ -327,7 +350,7 @@ fun TrainingRecordDetailScreen(
                                                     )
                                                 }
 
-                                                // 折线（更柔和）
+                                                // 折线
                                                 if (count >= 2) {
                                                     val path = Path().apply {
                                                         scores.forEachIndexed { i, s ->
@@ -343,16 +366,21 @@ fun TrainingRecordDetailScreen(
                                                     )
                                                 }
 
-                                                // 点（“标准”=绿）
+                                                // 点：使用非 composable 的颜色选择函数
                                                 scores.forEachIndexed { i, s ->
                                                     val x = i * dx
                                                     val y = h * (1f - s / 100f)
-                                                    val pointColor = if ((statuses.getOrNull(i) ?: "标准") == "标准")
-                                                        pointStandardColor else Color(0xFFFFA000) // 其他状态占位色
+                                                    val pointColor = colorForPerformanceRaw(
+                                                        performance = perfs.getOrNull(i),
+                                                        cStandard = perfColorStandard,
+                                                        cSmall = perfColorSmall,
+                                                        cCheat = perfColorCheat,
+                                                        cDefault = perfColorDefault
+                                                    )
                                                     drawCircle(pointColor, radius = 5.dp.toPx(), center = Offset(x, y))
                                                 }
 
-                                                // 选中效果：十字线 + 高亮圈
+                                                // 选中效果
                                                 selectedIndex?.let { sel ->
                                                     val sx = sel * dx
                                                     val sy = h * (1f - scores[sel] / 100f)
@@ -381,6 +409,7 @@ fun TrainingRecordDetailScreen(
                                         // 悬浮窗
                                         selectedIndex?.let { sel ->
                                             val scores = group.actionRecords.map { it.score.toFloat() }
+                                            val perfs  = group.actionRecords.map { it.performance }
                                             val count = scores.size
                                             if (count > sel && canvasSize.width > 0) {
                                                 val w = canvasSize.width.toFloat()
@@ -388,7 +417,7 @@ fun TrainingRecordDetailScreen(
                                                 val dx = if (count > 1) w / (count - 1) else w
                                                 val sx = sel * dx
                                                 val sy = h * (1f - scores[sel] / 100f)
-                                                val status = statuses.getOrNull(sel) ?: "标准"
+                                                val status = performanceNameOf(group.type, perfs.getOrNull(sel))
 
                                                 val offsetXDp = with(LocalDensity.current) { (sx + 8.dp.toPx()).toDp() }
                                                 val offsetYDp = with(LocalDensity.current) { (sy - 8.dp.toPx()).toDp() }
@@ -428,9 +457,37 @@ private fun exerciseNameOf(type: Int): String = when (type) {
     else -> "动作$type"
 }
 
+/** 完成情况：按动作类型 + performance 值映射，目前仅定义 type=1 */
+private fun performanceNameOf(type: Int, performance: Int?): String {
+    if (performance == null) return "--"
+    return when (type) {
+        1 -> when (performance) {
+            1 -> "标准"
+            2 -> "幅度偏小"
+            3 -> "借力"
+            else -> "--"
+        }
+        else -> "--"
+    }
+}
+
+/** 非 Composable 的颜色选择函数（把主题色作为参数传入） */
+private fun colorForPerformanceRaw(
+    performance: Int?,
+    cStandard: Color,
+    cSmall: Color,
+    cCheat: Color,
+    cDefault: Color
+): Color = when (performance) {
+    1 -> cStandard
+    2 -> cSmall
+    3 -> cCheat
+    else -> cDefault
+}
+
 /* ====================== 估算器：统一用“重量×次数” ====================== */
 private object EnergyEstimator {
-    private const val TEMPO_SEC_PER_REP: Float = 3f  // 3 秒/次，可按需调整
+    private const val TEMPO_SEC_PER_REP: Float = 3f  // 3 秒/次
 
     data class EstimationResult(
         val kcalTotal: Float,
