@@ -29,17 +29,25 @@ import androidx.navigation.NavController
 import androidx.compose.material3.CardDefaults
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.dumb_app.core.model.Log.LogDayDto
+import kotlin.math.max
+import kotlin.math.roundToInt
 
-// 内部数据结构，无需外部修改
+// 明细评分内部结构（可为空）
 private data class ActionRecord(val score: Int)
+
+// 组视图模型（带上真实次数与配重）
 private data class GroupRecord(
     val groupNumber: Int,
+    val groupId: Int?,
+    val type: Int,
     val actionName: String,
+    val actualReps: Int,    // 实际完成次数：优先明细条数，否则 item.num
+    val weightKg: Float,    // 配重
+    val avgScoreFromItem: Int,
     val actionRecords: List<ActionRecord>
 ) {
-    // ⚠️ 避免空列表 average() 返回 NaN
     val averageScore: Float =
-        if (actionRecords.isEmpty()) 0f
+        if (actionRecords.isEmpty()) avgScoreFromItem.toFloat()
         else actionRecords.map { it.score }.average().toFloat()
 }
 
@@ -48,31 +56,22 @@ private data class GroupRecord(
 fun TrainingRecordDetailScreen(
     navController: NavController
 ) {
-    // 1) 拿到当前 NavHost 的 backStackEntry state
     val currentEntry by navController.currentBackStackEntryAsState()
-    // 2) 用它作为 remember 的 key，去拿 record screen 的 entry
     val recordEntry = remember(currentEntry) {
         navController.getBackStackEntry("record")
     }
-    // 3) 用 recordEntry 拿同一个 RecordViewModel
     val vm: RecordViewModel = viewModel(recordEntry)
 
-    // 从 VM 里拿到“刚才选中的”那条 LogDayDto
     val selectedLog by vm.selectedLog.collectAsState()
     val log: LogDayDto? = selectedLog
 
-    // 新增：收集每个 groupId 对应的 works 列表（由 VM 维护）
     val worksMap by vm.worksMap.collectAsState()
 
-    // 当选中的日志变更时，按 groupId 触发一次批量加载 works
     LaunchedEffect(log?.session?.recordId) {
         val groupIds = log?.items?.mapNotNull { it.groupId } ?: emptyList()
-        if (groupIds.isNotEmpty()) {
-            vm.loadWorksFor(groupIds)
-        }
+        if (groupIds.isNotEmpty()) vm.loadWorksFor(groupIds)
     }
 
-    // 在 Composable 作用域里先抓一份主题色
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Surface(
@@ -86,34 +85,35 @@ fun TrainingRecordDetailScreen(
                     navigationIcon = {
                         IconButton(onClick = {
                             navController.popBackStack()
-                            vm.clearSelectedLog()  // 退出时清除
-                        }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                        }
+                            vm.clearSelectedLog()
+                        }) { Icon(Icons.Default.ArrowBack, contentDescription = "返回") }
                     }
                 )
             }
         ) { inner ->
             if (log == null) {
-                // 还没选中或数据为空
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(inner),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("无训练记录详情", style = MaterialTheme.typography.bodyLarge)
-                }
+                ) { Text("无训练记录详情", style = MaterialTheme.typography.bodyLarge) }
             } else {
-                // 根据 LogDayDto 动态构建每组
+                // ①：实际次数 = 明细条数（有则用），否则回退 item.num
                 val groups = log.items
                     .sortedBy { it.tOrder }
                     .mapIndexed { idx, item ->
-                        val works = worksMap[item.groupId].orEmpty()  // ← 改为从 VM 的 worksMap 获取
+                        val works = item.groupId?.let { worksMap[it] }.orEmpty()
+                        val actualReps = if (works.isNotEmpty()) works.size else item.num
                         GroupRecord(
-                            groupNumber   = idx + 1,
-                            actionName    = exerciseNameOf(item.type),
-                            actionRecords = works.map { ActionRecord(it.score) }
+                            groupNumber       = idx + 1,
+                            groupId           = item.groupId,
+                            type              = item.type,
+                            actionName        = exerciseNameOf(item.type),
+                            actualReps        = actualReps,
+                            weightKg          = item.tWeight,
+                            avgScoreFromItem  = item.avgScore,
+                            actionRecords     = works.map { ActionRecord(it.score) }
                         )
                     }
 
@@ -126,6 +126,15 @@ fun TrainingRecordDetailScreen(
                 ) {
                     items(groups) { group ->
                         var expanded by remember { mutableStateOf(false) }
+
+                        // ②：无条件按当前重量与“实际次数”计算卡路里（重量或次数≤0则返回0）
+                        val calc = remember(group) {
+                            EnergyEstimator.estimateSet(
+                                weightKg = group.weightKg,
+                                reps = max(group.actualReps, 0)
+                            )
+                        }
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -134,52 +143,53 @@ fun TrainingRecordDetailScreen(
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                // 标题行
+                                // 标题行 —— 与计算一致，统一用 actualReps
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        "第${group.groupNumber}组：${group.actionName}  ${group.actionRecords.size} 次",
+                                        "第${group.groupNumber}组：${group.actionName}  ${group.actualReps} 次",
                                         style = MaterialTheme.typography.titleMedium,
                                         modifier = Modifier.weight(1f)
                                     )
                                     IconButton(onClick = { expanded = !expanded }) {
                                         Icon(
-                                            imageVector = if (expanded) Icons.Default.ExpandLess
-                                            else Icons.Default.ExpandMore,
+                                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                             contentDescription = if (expanded) "收起" else "展开"
                                         )
                                     }
                                 }
-                                // 平均分（空明细显示 --）
+                                // ③：卡路里 + %1RM（标题下一行）
                                 Text(
-                                    text = "平均分：" + (if (group.actionRecords.isEmpty()) "--" else group.averageScore.toInt().toString()),
+                                    text = "卡路里：≈ ${calc.kcalTotal.format1()} kcal（%1RM≈${calc.percent1Rm.roundToInt()}%）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, top = 2.dp, bottom = 6.dp)
+                                )
+
+                                // 平均分（空明细回退 item.avgScore）
+                                Text(
+                                    text = "平均分：" + (if (group.actionRecords.isEmpty())
+                                        group.avgScoreFromItem.toString()
+                                    else
+                                        group.averageScore.toInt().toString()),
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(start = 32.dp, top = 4.dp, bottom = 8.dp)
                                 )
-                                // 明细 + 折线图
+
                                 if (expanded) {
-                                    // 序号 / 评分 列表
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = 32.dp)
                                     ) {
-                                        Text(
-                                            "序号",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            modifier = Modifier.weight(1f),
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Text(
-                                            "评分",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            modifier = Modifier.weight(1f),
-                                            textAlign = TextAlign.Center
-                                        )
+                                        Text("序号", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                                        Text("评分", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -190,23 +200,12 @@ fun TrainingRecordDetailScreen(
                                                     .padding(horizontal = 32.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text(
-                                                    "${i + 1}",
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    modifier = Modifier.weight(1f),
-                                                    textAlign = TextAlign.Center
-                                                )
-                                                Text(
-                                                    "${rec.score}",
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    modifier = Modifier.weight(1f),
-                                                    textAlign = TextAlign.Center
-                                                )
+                                                Text("${i + 1}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                                                Text("${rec.score}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                                             }
                                         }
                                     }
                                     Spacer(Modifier.height(12.dp))
-                                    // 折线图
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -228,10 +227,8 @@ fun TrainingRecordDetailScreen(
                                                     isAntiAlias = true
                                                     textAlign = Paint.Align.CENTER
                                                 }
-                                                // 坐标轴
                                                 drawLine(primaryColor, Offset(0f, h), Offset(w, h), 2f)
                                                 drawLine(primaryColor, Offset(0f, 0f), Offset(0f, h), 2f)
-                                                // x 刻度
                                                 scores.forEachIndexed { i, _ ->
                                                     val x = i * dx
                                                     drawLine(primaryColor, Offset(x, h), Offset(x, h - tick), 1f)
@@ -239,7 +236,6 @@ fun TrainingRecordDetailScreen(
                                                         "${i + 1}", x, h + labelSize + 4.dp.toPx(), paint
                                                     )
                                                 }
-                                                // y 刻度
                                                 listOf(0f, 25f, 50f, 75f, 100f).forEach { v ->
                                                     val y = h * (1f - v / 100f)
                                                     drawLine(primaryColor, Offset(0f, y), Offset(tick, y), 1f)
@@ -250,7 +246,6 @@ fun TrainingRecordDetailScreen(
                                                         paint.apply { textAlign = Paint.Align.RIGHT }
                                                     )
                                                 }
-                                                // 折线
                                                 val path = Path().apply {
                                                     scores.forEachIndexed { i, s ->
                                                         val x = i * dx
@@ -263,7 +258,6 @@ fun TrainingRecordDetailScreen(
                                                     primaryColor,
                                                     style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                                                 )
-                                                // 小圆点
                                                 scores.forEachIndexed { i, s ->
                                                     val x = i * dx
                                                     val y = h * (1f - s / 100f)
@@ -281,7 +275,8 @@ fun TrainingRecordDetailScreen(
         }
     }
 }
-/** 简单动作名映射 */
+
+/** 动作名映射 */
 private fun exerciseNameOf(type: Int): String = when (type) {
     1 -> "哑铃弯举"
     2 -> "肩推"
@@ -290,3 +285,41 @@ private fun exerciseNameOf(type: Int): String = when (type) {
     5 -> "深蹲"
     else -> "动作$type"
 }
+
+/* ====================== 估算器：统一用“重量×次数” ====================== */
+private object EnergyEstimator {
+    private const val TEMPO_SEC_PER_REP: Float = 3f  // 3 秒/次，可按需调整
+
+    data class EstimationResult(
+        val kcalTotal: Float,
+        val percent1Rm: Float
+    )
+
+    fun estimateSet(
+        weightKg: Float,
+        reps: Int,
+        tempoSecPerRep: Float = TEMPO_SEC_PER_REP
+    ): EstimationResult {
+        if (weightKg <= 0f || reps <= 0) return EstimationResult(kcalTotal = 0f, percent1Rm = 0f)
+        val oneRm = estimate1RmEpley(weightKg, reps)
+        val pct1Rm = if (oneRm > 0f) (weightKg / oneRm * 100f) else 0f
+        val rateKcalPerMin = energyRateKcalPerMin(pct1Rm) // 中间量：kcal/min
+        val workMin = reps * tempoSecPerRep / 60f
+        val kcal = rateKcalPerMin * workMin
+        return EstimationResult(kcalTotal = kcal, percent1Rm = pct1Rm)
+    }
+
+    // Epley：用同组的重量与实际次数估 1RM
+    private fun estimate1RmEpley(weightKg: Float, reps: Int): Float {
+        return weightKg * (1f + reps / 30f)
+    }
+
+    // 能量成本率（kcal/min）：用我们在弯举上验证过的 20–80%1RM 线性近似
+    private fun energyRateKcalPerMin(percent1Rm: Float): Float {
+        val p = percent1Rm.coerceIn(20f, 80f)
+        return 1.716f + 0.085f * p
+    }
+}
+
+/* 小工具 */
+private fun Float.format1(): String = String.format("%.1f", this)

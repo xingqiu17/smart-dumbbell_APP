@@ -1,11 +1,12 @@
 // app/src/main/java/com/example/dumb_app/feature/workout/TrainingScreen.kt
 package com.example.dumb_app.feature.workout
 
-import android.net.Uri
 import android.util.Log
-import android.widget.VideoView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -16,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,12 +30,11 @@ import com.example.dumb_app.core.util.TrainingSession
 import com.example.dumb_app.core.util.UserSession
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 private const val TAG_TS = "TrainingScreen"
 private const val TRAINING_ROUTE = "training"
 
-// 仅为避免枚举初始化告警而保留的 Saver（此版本已不再使用阶段流转）
+// 仅为避免枚举初始化告警而保留的 Saver
 private enum class FinishStage { NONE }
 private val FinishStageSaver: Saver<FinishStage, String> = Saver(
     save = { it.name },
@@ -64,7 +63,7 @@ fun TrainingScreen(
     val totalSets = items.size
     Log.d(TAG_TS, "compose start: totalSets=$totalSets, cachedSid=$cachedSid")
 
-    // 首次进入时，用 Session 初始化 VM 里的 pendingItems
+    // 首次进入时，用 Session 初始化 VM
     LaunchedEffect(TrainingSession.sessionId) {
         vm.initFromSession()
     }
@@ -80,14 +79,12 @@ fun TrainingScreen(
 
     // 去重键：包含 (type, rep, setIndex)
     var lastEventKey by rememberSaveable { mutableStateOf<Triple<Int, Int, Int>?>(null) }
-    // 组首计数闸门：必须先看到本组 rep==1 才允许后续计数与判完成
+    // 组首计数闸门
     var mustSeeFirstRep by rememberSaveable { mutableStateOf(true) }
 
-    // 完成提示弹窗
+    // 弹窗相关
     var showFinishDialog by rememberSaveable { mutableStateOf(false) }
-    // 确保后台保存只触发一次
     var hasSubmitted by rememberSaveable { mutableStateOf(false) }
-    // 退出提示弹窗
     var showExitDialog by rememberSaveable { mutableStateOf(false) }
 
     val currentItem = items.getOrNull(currentSetIndex)
@@ -98,7 +95,6 @@ fun TrainingScreen(
     var currentRep   by remember { mutableStateOf(0) }
     var totalRep     by remember { mutableStateOf(initialTarget) }
     var score        by remember { mutableStateOf<Double?>(null) }
-    var mediaUri     by remember { mutableStateOf(mediaUriFor(initialType)) }
 
     // 固定获取“训练页” BackStackEntry
     val trainingEntryState = remember { mutableStateOf<NavBackStackEntry?>(null) }
@@ -112,13 +108,7 @@ fun TrainingScreen(
             trainingEntryState.value = null
         }
     }
-
-
-
-
     val trainingHandle = trainingEntryState.value?.savedStateHandle
-
-
 
     // 恢复等待状态
     LaunchedEffect(trainingHandle) {
@@ -157,29 +147,23 @@ fun TrainingScreen(
         lastEventKey    = null
         exerciseName = exerciseNameOf(currentItem?.type ?: 0)
         totalRep     = currentItem?.number ?: 0
-        mediaUri     = mediaUriFor(currentItem?.type ?: 0)
         currentRep   = 0
         score        = null
         inRest       = false
     }
 
-    // —— 监听硬件上报：按“当前组”写入（交给 VM） —— //
+    // —— 监听硬件上报 —— //
     val wsEvent by wifiVm.wsEvents.collectAsState(initial = null)
     LaunchedEffect(wsEvent) {
         if (wsEvent == null) return@LaunchedEffect
-
-
         when (val e = wsEvent) {
 
-
-            // ✅ 新增：处理设备发来的“退出训练”事件
             is WsEvent.TrainingExited -> {
                 Log.d(TAG_TS, "Device requested to exit training.")
-                // 执行与用户点击“确认退出”相同的逻辑
                 vm.savePartialTraining(UserSession.uid)
                 TrainingSession.clear()
-                navController.popBackStack("workout", false) // 返回到训练计划列表页
-                wifiVm.clearEvent() // 消费事件
+                navController.popBackStack("workout", false)
+                wifiVm.clearEvent()
             }
 
             is WsEvent.ExerciseData -> {
@@ -197,7 +181,7 @@ fun TrainingScreen(
                     return@LaunchedEffect
                 }
 
-                // 组首闸门：你的硬件每组 rep 从 1 开始，上闸只放行 rep==1
+                // 组首闸门：你的硬件每组 rep 从 1 开始
                 if (mustSeeFirstRep) {
                     if (e.rep != 1) {
                         Log.d(TAG_TS, "ignore until first rep of current set (rep=${e.rep})")
@@ -208,7 +192,7 @@ fun TrainingScreen(
                     startedThisSet  = true
                 }
 
-                // 交给 VM 累计写入（跨导航不丢）
+                // 交给 VM 累计
                 vm.applyExerciseData(
                     setIndex     = currentSetIndex,
                     expectedType = cur.type,
@@ -222,7 +206,6 @@ fun TrainingScreen(
                 score      = e.score
                 totalRep   = cur.number
                 exerciseName = exerciseNameOf(e.exercise)
-                mediaUri     = mediaUriFor(e.exercise)
 
                 lastEventKey = eventKey
                 val worksInSet = pendingItems.getOrNull(currentSetIndex)?.works?.size ?: 0
@@ -232,7 +215,7 @@ fun TrainingScreen(
         }
     }
 
-    // 完成判定：最后一组 -> 后台自动保存 & 弹出“恭喜完成”
+    // 完成判定
     LaunchedEffect(currentRep, totalRep) {
         if (inRest || !startedThisSet) {
             Log.d(TAG_TS, "skip completion: inRest=$inRest, startedThisSet=$startedThisSet, cur=$currentRep, total=$totalRep")
@@ -242,42 +225,32 @@ fun TrainingScreen(
             finishTriggered = true
             Log.d(TAG_TS, "SET COMPLETED -> setIndex=$currentSetIndex, totalSets=$totalSets")
             if (currentSetIndex < totalSets - 1) {
-                // ✅ 获取当前组设定的休息时间，如果未设定则默认为60秒
                 val restTime = items.getOrNull(currentSetIndex)?.rest ?: 60
-
                 inRest = true
                 trainingHandle?.set("awaitingNextSet", true)
-
-                // ✅ 将休息时间作为参数传递给 rest 路由
                 navController.navigate("rest/$restTime")
             } else {
                 Log.d(TAG_TS, "ALL SETS DONE -> autosave & show done dialog")
-                // —— 仅触发一次的后台保存（无 UI 干预，不显示错误）——
                 if (!hasSubmitted) {
                     hasSubmitted = true
-                    // （可选）补齐每组未做到的次数为 0，保证 works.size == num
                     vm.fillMissingZeros()
                     val dateStr = LocalDate.now().format(DateTimeFormatter.ISO_DATE)
                     val req = vm.buildLogDayCreateReq(
                         userId = UserSession.uid,
                         date   = dateStr
                     )
-                    //vm.saveLog(req)
-                    // 尝试标记计划完成（失败也不提示，不影响退出）
-                    //vm.markPlanComplete()   调试注释
+                    // vm.saveLog(req)
+                    // vm.markPlanComplete()
                 }
-
-                // 调试输出：逐组汇总（来自 VM）
                 pendingItems.forEachIndexed { i, pi ->
                     Log.d(TAG_TS, "ready to save [set=${i+1}] -> type=${pi.type}, num=${pi.num}, works=${pi.works.size}, avg=${pi.avgScore}")
                 }
-
                 showFinishDialog = true
             }
         }
     }
 
-    // 返回键：弹窗打开先收起；否则直接返回训练路由上一层
+    // 返回键处理
     BackHandler {
         if (showFinishDialog) {
             showFinishDialog = false
@@ -314,6 +287,7 @@ fun TrainingScreen(
         return
     }
 
+    // ====== UI：顶部统计 + 评分 + 可滚动“已完成明细”，底部固定“退出训练” ======
     Scaffold(
         topBar = {
             SmallTopAppBar(
@@ -334,64 +308,170 @@ fun TrainingScreen(
                     }
                 }
             )
+        },
+        // ✅ 退出训练固定在最底部
+        bottomBar = {
+            Surface(tonalElevation = 2.dp, shadowElevation = 8.dp) {
+                Box(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Button(
+                        onClick = {
+                            Log.d(TAG_TS, "exit training clicked")
+                            showExitDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("退出训练", color = Color.White)
+                    }
+                }
+            }
         }
     ) { inner ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (!mediaUri.isNullOrEmpty()) {
-                AndroidView(
+            // 顶部：当前动作名称
+            Text(
+                text = exerciseName,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+
+            // —— 统计卡片：已完成 / 预计 —— //
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(240.dp),
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setVideoURI(Uri.parse(mediaUri))
-                            setOnPreparedListener { mp ->
-                                mp.isLooping = true
-                                start()
-                            }
-                        }
-                    },
-                    update = { vv -> if (!vv.isPlaying) vv.start() }
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text("此处显示动作演示", style = MaterialTheme.typography.bodyMedium)
+                    // 已完成
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "已完成",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "$currentRep",
+                            style = MaterialTheme.typography.displaySmall
+                        )
+                    }
+
+                    // 竖向分隔
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(44.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    )
+
+                    // 预计
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "预计",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "$totalRep",
+                            style = MaterialTheme.typography.displaySmall
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
-
+            // ✅ 评分放在卡片下方，居中显示
+            Spacer(Modifier.height(12.dp))
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("$currentRep/$totalRep", style = MaterialTheme.typography.headlineLarge)
-                Text(score?.let { String.format("%.1f", it) } ?: "--",
-                    style = MaterialTheme.typography.headlineLarge)
+                Text(
+                    text = "评分：${score?.let { String.format("%.1f", it) } ?: "--"}",
+                    style = MaterialTheme.typography.headlineSmall
+                )
             }
-            Spacer(Modifier.height(24.dp))
 
-            Button(
-                onClick = {
-                    Log.d(TAG_TS, "exit training clicked")
-                    showExitDialog = true
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-            ) {
-                Text("退出训练", color = Color.White)
+            Spacer(Modifier.height(16.dp))
+
+            // —— 可滚动“已完成动作及评分”明细 —— //
+            Text(
+                text = "已完成明细",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // 从 VM 汇总所有已完成的（到当前为止）
+            val completedList = remember(pendingItems) {
+                pendingItems.flatMapIndexed { setIdx, pi ->
+                    pi.works.mapIndexed { repIdx, sc ->
+                        CompletedRow(
+                            setIndex = setIdx + 1,
+                            repIndex = repIdx + 1,
+                            typeName = exerciseNameOf(pi.type),
+                            scoreStr = sc?.let { String.format("%.1f", it) } ?: "--"
+                        )
+                    }
+                }
+            }
+
+            // 让列表占据剩余空间，不足时可滚动；底部按钮固定不动
+            if (completedList.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("暂无已完成记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    // 额外底部内边距，避免被底部栏遮挡（即便内容很长也能完整滚动到）
+                    contentPadding = PaddingValues(bottom = 12.dp)
+                ) {
+                    items(completedList) { row ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${row.typeName} · 第${row.setIndex}组 第${row.repIndex}次",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = row.scoreStr,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                        Divider()
+                    }
+                }
             }
         }
     }
@@ -416,10 +496,9 @@ fun TrainingScreen(
         )
     }
 
-    // —— 训练完成弹窗（仅提示 + 确定） —— //
     if (showFinishDialog) {
         AlertDialog(
-            onDismissRequest = { /* 完成提示不支持点外部取消 */ },
+            onDismissRequest = { },
             title = { Text("训练完成") },
             text = { Text("恭喜你完成训练！") },
             confirmButton = {
@@ -444,5 +523,10 @@ private fun exerciseNameOf(type: Int): String = when (type) {
     else -> "动作$type"
 }
 
-/** 媒体 URI，如无则返回 null */
-private fun mediaUriFor(type: Int): String? = null
+/** 展示行数据结构（仅用于 UI） */
+private data class CompletedRow(
+    val setIndex: Int,
+    val repIndex: Int,
+    val typeName: String,
+    val scoreStr: String
+)
