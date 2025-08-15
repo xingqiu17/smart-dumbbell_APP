@@ -151,7 +151,7 @@ fun CreatePlanScreen(nav: NavController) {
                                     modifier = Modifier.menuAnchor().fillMaxWidth()
                                 )
                                 ExposedDropdownMenu(expanded = exp, onDismissRequest = { exp = false }) {
-                                    listOf("哑铃弯举", "卧推").forEach { act ->
+                                    listOf("哑铃弯举", "侧平举").forEach { act ->
                                         DropdownMenuItem(
                                             text = { Text(act) },
                                             onClick = {

@@ -58,6 +58,9 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.androidx.foundation)
     implementation(libs.androidx.ui.text)
+    implementation(libs.zai.sdk)
+
+
 
     // -------- 协程 -----------
     implementation(libs.coroutines.android)
@@ -68,5 +71,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+
 
 }

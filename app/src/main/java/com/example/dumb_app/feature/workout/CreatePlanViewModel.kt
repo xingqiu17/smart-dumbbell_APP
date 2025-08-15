@@ -64,7 +64,7 @@ class CreatePlanViewModel(
                     // 映射动作
                     val actName = when (item.type) {
                         1 -> "哑铃弯举"
-                        2 -> "卧推"
+                        2 -> "侧平举"
                         else -> ""
                     }
                     rowList += PlanRow.ActionRow(
@@ -165,7 +165,7 @@ class CreatePlanViewModel(
                                 PlanItemCreateDto(
                                     type    = when (r.action) {
                                         "哑铃弯举" -> 1
-                                        "卧推"     -> 2
+                                        "侧平举"     -> 2
                                         else       -> throw IllegalArgumentException("未知动作：${r.action}")
                                     },
                                     number  = r.quantity.ifBlank { "0" }.toInt(),

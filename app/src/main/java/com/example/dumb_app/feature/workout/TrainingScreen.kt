@@ -3,6 +3,9 @@ package com.example.dumb_app.feature.workout
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel
 import com.example.dumb_app.core.connectivity.wifi.WifiScanViewModel.WsEvent
@@ -28,18 +29,11 @@ import com.example.dumb_app.core.network.NetworkModule
 import com.example.dumb_app.core.repository.TrainingRepository
 import com.example.dumb_app.core.util.TrainingSession
 import com.example.dumb_app.core.util.UserSession
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 private const val TAG_TS = "TrainingScreen"
-private const val TRAINING_ROUTE = "training"
-
-// 仅为避免枚举初始化告警而保留的 Saver
-private enum class FinishStage { NONE }
-private val FinishStageSaver: Saver<FinishStage, String> = Saver(
-    save = { it.name },
-    restore = { FinishStage.valueOf(it) }
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,30 +51,33 @@ fun TrainingScreen(
         }
     )
 
-    // —— 基础信息 —— //
+    // —— 基础 —— //
     val cachedSid = TrainingSession.sessionId
     val items = TrainingSession.items
     val totalSets = items.size
     Log.d(TAG_TS, "compose start: totalSets=$totalSets, cachedSid=$cachedSid")
 
-    // 首次进入时，用 Session 初始化 VM
     LaunchedEffect(TrainingSession.sessionId) { vm.initFromSession() }
-
-    // 从 VM 读取各组累计（跨导航不丢）
     val pendingItems by vm.pendingItems.collectAsState()
 
-    // —— 局部 UI 状态 —— //
+    // —— UI/业务状态 —— //
     var currentSetIndex by rememberSaveable { mutableStateOf(0) }
-    var finishTriggered by rememberSaveable { mutableStateOf(false) }
-    var inRest by rememberSaveable { mutableStateOf(false) }
     var startedThisSet by rememberSaveable { mutableStateOf(false) }
+    var finishTriggered by rememberSaveable { mutableStateOf(false) }
 
-    // 去重键：包含 (type, rep, setIndex)
+    // 休息内嵌倒计时
+    var inRest by rememberSaveable { mutableStateOf(false) }
+    var restTotal by rememberSaveable { mutableStateOf(0) }
+    var secondsRemaining by rememberSaveable { mutableStateOf(0) }
+
+    // 训练已全部完成，但选择“返回”留在页面
+    var trainingCompleted by rememberSaveable { mutableStateOf(false) }
+
+    // 去重/组首闸门
     var lastEventKey by rememberSaveable { mutableStateOf<Triple<Int, Int, Int>?>(null) }
-    // 组首计数闸门
     var mustSeeFirstRep by rememberSaveable { mutableStateOf(true) }
 
-    // 弹窗相关
+    // 弹窗
     var showFinishDialog by rememberSaveable { mutableStateOf(false) }
     var hasSubmitted by rememberSaveable { mutableStateOf(false) }
     var showExitDialog by rememberSaveable { mutableStateOf(false) }
@@ -89,75 +86,16 @@ fun TrainingScreen(
     val initialType = currentItem?.type ?: 0
     val initialTarget = currentItem?.number ?: 0
 
-    var exerciseName by remember { mutableStateOf(exerciseNameOf(initialType)) }
-    var currentRep   by remember { mutableStateOf(0) }
-    var totalRep     by remember { mutableStateOf(initialTarget) }
-    var score        by remember { mutableStateOf<Double?>(null) }
-    var currentExLabel by remember { mutableStateOf<Int?>(null) }
+    var exerciseName by rememberSaveable { mutableStateOf(exerciseNameOf(initialType)) }
+    var currentRep by rememberSaveable { mutableStateOf(0) }
+    var totalRep by rememberSaveable { mutableStateOf(initialTarget) }
+    var score by rememberSaveable { mutableStateOf<Double?>(null) }
+    var currentExLabel by rememberSaveable { mutableStateOf<Int?>(null) }
 
-    // 固定获取“训练页” BackStackEntry
-    val trainingEntryState = remember { mutableStateOf<NavBackStackEntry?>(null) }
-    LaunchedEffect(navController) {
-        runCatching {
-            val entry = navController.getBackStackEntry(TRAINING_ROUTE)
-            trainingEntryState.value = entry
-            Log.d(TAG_TS, "got trainingEntry=$entry for route=$TRAINING_ROUTE")
-        }.onFailure {
-            Log.e(TAG_TS, "getBackStackEntry($TRAINING_ROUTE) failed: ${it.message}", it)
-            trainingEntryState.value = null
-        }
-    }
-    val trainingHandle = trainingEntryState.value?.savedStateHandle
-
-    // 恢复等待状态
-    LaunchedEffect(trainingHandle) {
-        val awaiting = trainingHandle?.get<Boolean>("awaitingNextSet") == true
-        Log.d(TAG_TS, "check awaitingNextSet at enter: $awaiting")
-        if (awaiting) inRest = true
-        trainingHandle?.remove<Boolean>("awaitingNextSet")
-    }
-
-    // 订阅 advanceSet
-    DisposableEffect(trainingHandle) {
-        if (trainingHandle == null) return@DisposableEffect onDispose { }
-        val liveData = trainingHandle.getLiveData<Boolean>("advanceSet")
-        val observer = androidx.lifecycle.Observer<Boolean> { goNext ->
-            Log.d(TAG_TS, "observer advanceSet=$goNext (currentSetIndex=$currentSetIndex)")
-            if (goNext == true) {
-                mustSeeFirstRep = true
-                lastEventKey    = null
-                val next = (currentSetIndex + 1).coerceAtMost(totalSets - 1)
-                Log.d(TAG_TS, "advance to next set: $currentSetIndex -> $next")
-                currentSetIndex = next
-                trainingHandle.remove<Boolean>("advanceSet")
-                trainingHandle.remove<Boolean>("awaitingNextSet")
-            }
-        }
-        liveData.observeForever(observer)
-        onDispose { liveData.removeObserver(observer) }
-    }
-
-    // 切组重置
-    LaunchedEffect(currentSetIndex) {
-        Log.d(TAG_TS, "onSetChanged -> setIndex=$currentSetIndex, type=${currentItem?.type}, num=${currentItem?.number}")
-        finishTriggered = false
-        startedThisSet  = false
-        mustSeeFirstRep = true
-        lastEventKey    = null
-        exerciseName = exerciseNameOf(currentItem?.type ?: 0)
-        totalRep     = currentItem?.number ?: 0
-        currentRep   = 0
-        score        = null
-        currentExLabel = null
-        inRest       = false
-    }
-
-    // —— 监听硬件上报 —— //
+    // —— 硬件事件 —— //
     val wsEvent by wifiVm.wsEvents.collectAsState(initial = null)
     LaunchedEffect(wsEvent) {
-        if (wsEvent == null) return@LaunchedEffect
         when (val e = wsEvent) {
-
             is WsEvent.TrainingExited -> {
                 Log.d(TAG_TS, "Device requested to exit training.")
                 vm.savePartialTraining(UserSession.uid)
@@ -165,101 +103,132 @@ fun TrainingScreen(
                 navController.popBackStack("workout", false)
                 wifiVm.clearEvent()
             }
-
+            is WifiScanViewModel.WsEvent.RestSkipped -> {
+                Log.d(TAG_TS, "Received skip rest from device.")
+                inRest = false
+                advanceToNextSet(
+                    totalSets = totalSets,
+                    curIdx = currentSetIndex,
+                    onIdx = { currentSetIndex = it },
+                    onResetSetState = {
+                        mustSeeFirstRep = true
+                        lastEventKey = null
+                        startedThisSet = false
+                    },
+                    onExitAllDone = {
+                        handleAllDone(vm) { showFinishDialog = true; hasSubmitted = true }
+                    }
+                )
+                wifiVm.clearEvent()
+            }
             is WsEvent.ExerciseData -> {
-                if (inRest) {
-                    Log.d(TAG_TS, "wsEvent ignored: inRest=true, event=$wsEvent")
-                    return@LaunchedEffect
-                }
+                if (inRest || trainingCompleted) return@LaunchedEffect
                 val cur = currentItem ?: return@LaunchedEffect
                 if (e.exercise != cur.type) return@LaunchedEffect
 
-                // 去重：包含 setIndex
                 val eventKey = Triple(e.exercise, e.rep, currentSetIndex)
-                if (lastEventKey == eventKey) {
-                    Log.d(TAG_TS, "ignore duplicated wsEvent: $eventKey")
-                    return@LaunchedEffect
-                }
+                if (lastEventKey == eventKey) return@LaunchedEffect
 
-                // 组首闸门：你的硬件每组 rep 从 1 开始
                 if (mustSeeFirstRep) {
                     if (e.rep != 1) {
-                        Log.d(TAG_TS, "ignore until first rep of current set (rep=${e.rep})")
                         lastEventKey = eventKey
                         return@LaunchedEffect
                     }
                     mustSeeFirstRep = false
-                    startedThisSet  = true
+                    startedThisSet = true
                 }
 
-                // 交给 VM 累计（带 exLabel）
                 vm.applyExerciseData(
-                    setIndex     = currentSetIndex,
+                    setIndex = currentSetIndex,
                     expectedType = cur.type,
-                    rep          = e.rep,
-                    score        = e.score,
-                    exLabel      = e.exLabel
+                    rep = e.rep,
+                    score = e.score,
+                    exLabel = e.exLabel
                 )
 
-                // —— 同步 UI 展示 —— //
-                val k = e.rep.coerceAtMost(cur.number)
-                currentRep = k
-                score      = e.score
-                totalRep   = cur.number
+                currentRep = e.rep.coerceAtMost(cur.number)
+                score = e.score
+                totalRep = cur.number
                 exerciseName = exerciseNameOf(e.exercise)
                 currentExLabel = e.exLabel
 
                 lastEventKey = eventKey
             }
-            else -> Log.d(TAG_TS, "other wsEvent=$wsEvent")
+            else -> Unit
         }
     }
 
-    // 完成判定
+    // —— 切组重置 —— //
+    LaunchedEffect(currentSetIndex) {
+        finishTriggered = false
+        startedThisSet = false
+        mustSeeFirstRep = true
+        lastEventKey = null
+        exerciseName = exerciseNameOf(currentItem?.type ?: 0)
+        totalRep = currentItem?.number ?: 0
+        currentRep = 0
+        score = null
+        currentExLabel = null
+        inRest = false
+        trainingCompleted = false
+    }
+
+    // —— 完成判定 —— //
     LaunchedEffect(currentRep, totalRep) {
-        if (inRest || !startedThisSet) {
-            Log.d(TAG_TS, "skip completion: inRest=$inRest, startedThisSet=$startedThisSet, cur=$currentRep, total=$totalRep")
-            return@LaunchedEffect
-        }
+        if (inRest || !startedThisSet || trainingCompleted) return@LaunchedEffect
         if (!finishTriggered && totalRep > 0 && currentRep >= totalRep) {
             finishTriggered = true
-            Log.d(TAG_TS, "SET COMPLETED -> setIndex=$currentSetIndex, totalSets=$totalSets")
             if (currentSetIndex < totalSets - 1) {
+                // 启动内嵌休息
                 val restTime = items.getOrNull(currentSetIndex)?.rest ?: 60
+                restTotal = restTime
+                secondsRemaining = restTime
                 inRest = true
-                trainingHandle?.set("awaitingNextSet", true)
-                navController.navigate("rest/$restTime")
             } else {
-                Log.d(TAG_TS, "ALL SETS DONE -> autosave & show done dialog")
                 if (!hasSubmitted) {
-                    hasSubmitted = true
-                    vm.fillMissingZeros()
-                    val dateStr = LocalDate.now().format(DateTimeFormatter.ISO_DATE)
-                    val req = vm.buildLogDayCreateReq(
-                        userId = UserSession.uid,
-                        date   = dateStr
-                    )
-                    // vm.saveLog(req)
-                    // vm.markPlanComplete()
+                    handleAllDone(vm) { showFinishDialog = true; hasSubmitted = true }
                 }
-                showFinishDialog = true
             }
         }
     }
 
-    // 返回键处理
+    // —— 休息倒计时 —— //
+    LaunchedEffect(inRest) {
+        if (!inRest) return@LaunchedEffect
+        while (inRest && secondsRemaining > 0) {
+            delay(1000L)
+            secondsRemaining--
+        }
+        if (inRest && secondsRemaining <= 0) {
+            advanceToNextSet(
+                totalSets = totalSets,
+                curIdx = currentSetIndex,
+                onIdx = { currentSetIndex = it },
+                onResetSetState = {
+                    mustSeeFirstRep = true
+                    lastEventKey = null
+                    startedThisSet = false
+                },
+                onExitAllDone = {
+                    handleAllDone(vm) { showFinishDialog = true; hasSubmitted = true }
+                }
+            )
+            inRest = false
+        }
+    }
+
+    // —— 返回键 —— //
     BackHandler {
         if (showFinishDialog) {
             showFinishDialog = false
+            trainingCompleted = true
             return@BackHandler
         }
-        Log.d(TAG_TS, "Back pressed -> clear session & popBackStack")
         TrainingSession.clear()
-        navController.popBackStack(TRAINING_ROUTE, false)
+        navController.popBackStack("training", false)
     }
 
     if (cachedSid == null) {
-        Log.d(TAG_TS, "no session -> fallback UI")
         Scaffold(
             topBar = {
                 SmallTopAppBar(
@@ -273,50 +242,83 @@ fun TrainingScreen(
             }
         ) { inner ->
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(inner),
+                modifier = Modifier.fillMaxSize().padding(inner),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("未找到训练会话，请重新选择计划。")
-            }
+            ) { Text("未找到训练会话，请重新选择计划。") }
         }
         return
     }
 
-    // ====== UI：顶部统计 + 评分 + 当前组“个数/评分/完成状况”表格，底部固定“退出训练” ======
+    // —— UI —— //
     Scaffold(
         topBar = {
             SmallTopAppBar(
-                title = { Text(TrainingSession.title ?: "训练中") },
+                title = { Text(if (inRest) "休息中" else (TrainingSession.title ?: "训练中")) },
                 navigationIcon = {
                     IconButton(
                         onClick = {
                             if (showFinishDialog) {
                                 showFinishDialog = false
-                                return@IconButton
+                                trainingCompleted = true
+                            } else {
+                                TrainingSession.clear()
+                                navController.popBackStack()
                             }
-                            Log.d(TAG_TS, "toolbar back -> clear session & popBackStack")
-                            TrainingSession.clear()
-                            navController.popBackStack()
                         }
-                    ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
+                    ) { Icon(Icons.Default.ArrowBack, contentDescription = "返回") }
                 }
             )
         },
         bottomBar = {
             Surface(tonalElevation = 2.dp, shadowElevation = 8.dp) {
                 Box(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Button(
-                        onClick = {
-                            Log.d(TAG_TS, "exit training clicked")
+
+                    // 明确是 BtnCfg，避免任何泛型/lambda 推断问题
+                    val btn: BtnCfg = when {
+                        trainingCompleted -> BtnCfg(
+                            text = "完成训练",
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            TrainingSession.clear()
+                            navController.popBackStack("workout", false)
+                        }
+
+                        inRest -> BtnCfg(
+                            text = "跳过休息",
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            wifiVm.sendSkipRest()
+                            inRest = false
+                            advanceToNextSet(
+                                totalSets = totalSets,
+                                curIdx = currentSetIndex,
+                                onIdx = { currentSetIndex = it },
+                                onResetSetState = {
+                                    mustSeeFirstRep = true
+                                    lastEventKey = null
+                                    startedThisSet = false
+                                },
+                                onExitAllDone = {
+                                    handleAllDone(vm) { showFinishDialog = true; hasSubmitted = true }
+                                }
+                            )
+                        }
+
+                        else -> BtnCfg(
+                            text = "退出训练",
+                            color = Color.Red
+                        ) {
                             showExitDialog = true
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        }
+                    }
+
+                    Button(
+                        onClick = btn.onClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = btn.color),
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("退出训练", color = Color.White) }
+                    ) {
+                        Text(btn.text, color = Color.White)
+                    }
                 }
             }
         }
@@ -328,58 +330,94 @@ fun TrainingScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 顶部：当前动作名称
+            val header = when {
+                trainingCompleted -> "训练已完成"
+                inRest -> "休息"
+                else -> exerciseName
+            }
             Text(
-                text = exerciseName,
+                text = header,
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
 
-            // —— 统计卡片：已完成 / 预计 —— //
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly
+            if (inRest) {
+                val progress by animateFloatAsState(
+                    targetValue = if (restTotal > 0) secondsRemaining / restTotal.toFloat() else 0f,
+                    animationSpec = tween(durationMillis = 400, easing = LinearEasing)
+                )
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large
                 ) {
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("已完成", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$currentRep", style = MaterialTheme.typography.displaySmall)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp).height(44.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-                    )
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("预计", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$totalRep", style = MaterialTheme.typography.displaySmall)
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = progress,
+                                strokeWidth = 8.dp,
+                                modifier = Modifier.size(160.dp)
+                            )
+                            Text(
+                                text = secondsRemaining.toString(),
+                                style = MaterialTheme.typography.headlineLarge
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "休息倒计时",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-            }
+            } else {
+                // 统计卡片：已完成/预计
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("已完成", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$currentRep", style = MaterialTheme.typography.displaySmall)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp).height(44.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        )
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("预计", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$totalRep", style = MaterialTheme.typography.displaySmall)
+                        }
+                    }
+                }
 
-            // 评分居中
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "评分：${score?.let { String.format("%.1f", it) } ?: "--"}",
-                    style = MaterialTheme.typography.headlineSmall
-                )
+                // 评分
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "评分：${score?.let { String.format("%.1f", it) } ?: "--"}",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // —— 当前组“个数 / 评分 / 完成状况”表格 —— //
+            // 明细表
             Text(
                 text = "已完成明细（当前组）",
                 style = MaterialTheme.typography.titleMedium,
@@ -388,34 +426,30 @@ fun TrainingScreen(
             )
             Spacer(Modifier.height(8.dp))
 
-            // 表头
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium
             ) {
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("个数",   modifier = Modifier.weight(0.3f),  style = MaterialTheme.typography.labelLarge)
-                    Text("评分",   modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
+                    Text("个数", modifier = Modifier.weight(0.3f), style = MaterialTheme.typography.labelLarge)
+                    Text("评分", modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
                     Text("完成状况", modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
                 }
             }
 
             Spacer(Modifier.height(6.dp))
 
-            // 直接“即时”从 pendingItems[currentSetIndex] 取，不缓存，确保实时
             val curPi = pendingItems.getOrNull(currentSetIndex)
             val curType = curPi?.type ?: 0
             val rows = curPi?.works?.map { w ->
                 CompletedRow(
-                    count     = w.acOrder,
+                    count = w.acOrder,
                     scoreText = String.format("%.1f", w.score.toDouble()),
                     labelName = labelNameOf(curType, w.exLabel),
-                    exLabel   = w.exLabel
+                    exLabel = w.exLabel
                 )
             } ?: emptyList()
 
@@ -434,8 +468,8 @@ fun TrainingScreen(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(r.count.toString(), modifier = Modifier.weight(0.3f),  style = MaterialTheme.typography.bodyLarge)
-                            Text(r.scoreText,        modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.bodyLarge)
+                            Text(r.count.toString(), modifier = Modifier.weight(0.3f), style = MaterialTheme.typography.bodyLarge)
+                            Text(r.scoreText, modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.bodyLarge)
                             Text(
                                 r.labelName,
                                 modifier = Modifier.weight(0.35f),
@@ -450,6 +484,7 @@ fun TrainingScreen(
         }
     }
 
+    // 退出训练对话框
     if (showExitDialog) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
@@ -457,22 +492,19 @@ fun TrainingScreen(
             text = { Text("确定要退出训练吗？未完成动作将记为0分。") },
             confirmButton = {
                 TextButton(onClick = {
-                    Log.d(TAG_TS, "exit confirmed -> save and exit")
-                    vm.savePartialTraining(UserSession.uid)
                     wifiVm.sendExitTraining()
                     TrainingSession.clear()
                     navController.popBackStack("workout", false)
                 }) { Text("确定") }
             },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) { Text("取消") }
-            }
+            dismissButton = { TextButton(onClick = { showExitDialog = false }) { Text("取消") } }
         )
     }
 
+    // 训练完成对话框（退出 / 返回）
     if (showFinishDialog) {
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = { /* 不可点击空白取消 */ },
             title = { Text("训练完成") },
             text = { Text("恭喜你完成训练！") },
             confirmButton = {
@@ -481,46 +513,99 @@ fun TrainingScreen(
                         TrainingSession.clear()
                         navController.popBackStack("workout", false)
                     }
-                ) { Text("确定") }
+                ) { Text("退出") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showFinishDialog = false
+                        trainingCompleted = true
+                    }
+                ) { Text("返回") }
             }
         )
     }
 }
 
-/** 简单动作名映射 */
+// —— 公共逻辑 —— //
+private fun advanceToNextSet(
+    totalSets: Int,
+    curIdx: Int,
+    onIdx: (Int) -> Unit,
+    onResetSetState: () -> Unit,
+    onExitAllDone: () -> Unit
+) {
+    val next = curIdx + 1
+    if (next < totalSets) {
+        onResetSetState()
+        onIdx(next)
+    } else {
+        onExitAllDone()
+    }
+}
+
+private fun handleAllDone(
+    vm: TrainingViewModel,
+    showDialog: () -> Unit
+) {
+    vm.fillMissingZeros()
+    val dateStr = LocalDate.now().format(DateTimeFormatter.ISO_DATE)
+    val _req = vm.buildLogDayCreateReq(
+        userId = UserSession.uid,
+        date = dateStr
+    )
+    // vm.saveLog(_req)
+    // vm.markPlanComplete()
+    showDialog()
+}
+
+// —— 辅助映射/UI —— //
 private fun exerciseNameOf(type: Int): String = when (type) {
     1 -> "哑铃弯举"
-    2 -> "肩推"
+    2 -> "侧平举"
     3 -> "卧推"
     4 -> "划船"
     5 -> "深蹲"
     else -> "动作$type"
 }
 
-/** label -> 文案 */
 private fun labelNameOf(type: Int, exLabel: Int?): String {
     if (exLabel == null) return "--"
-    return when (exLabel) {
-        0 -> "标准"
-        1 -> "幅度偏小"
-        2 -> "借力"
-        else -> "其他"
-    }
+    return if (type == 1) {
+        when (exLabel) {
+            0 -> "标准"
+            1 -> "幅度偏小"
+            2 -> "借力"
+            else -> "其他"
+        }
+    } else if (type == 2) {
+        when (exLabel) {
+            0 -> "标准"
+            1 -> "肩内旋代偿"
+            2 -> "躯干代偿"
+            3 -> "下落过快"
+            else -> "其他"
+        }
+    } else "--"
 }
 
-/** label -> 文字颜色映射 */
 @Composable
 private fun labelTextColor(exLabel: Int?): Color = when (exLabel) {
     0 -> MaterialTheme.colorScheme.primary
     1 -> MaterialTheme.colorScheme.tertiary
-    2 -> MaterialTheme.colorScheme.error
+    2, 3 -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-/** 展示行数据结构（仅用于 UI） */
 private data class CompletedRow(
-    val count: Int,         // 个数（第几次）
-    val scoreText: String,  // 评分（已格式化）
-    val labelName: String,  // 完成状况（文案）
-    val exLabel: Int?       // 完成状况（用于颜色）
+    val count: Int,
+    val scoreText: String,
+    val labelName: String,
+    val exLabel: Int?
+)
+
+private data class BtnCfg(
+    val text: String,
+    val color: Color,
+    val onClick: () -> Unit
 )

@@ -450,7 +450,7 @@ fun TrainingRecordDetailScreen(
 /** 动作名映射 */
 private fun exerciseNameOf(type: Int): String = when (type) {
     1 -> "哑铃弯举"
-    2 -> "肩推"
+    2 -> "侧平举"
     3 -> "卧推"
     4 -> "划船"
     5 -> "深蹲"
@@ -462,9 +462,16 @@ private fun performanceNameOf(type: Int, performance: Int?): String {
     if (performance == null) return "--"
     return when (type) {
         1 -> when (performance) {
-            1 -> "标准"
-            2 -> "幅度偏小"
-            3 -> "借力"
+            0 -> "标准"
+            1 -> "幅度偏小"
+            2 -> "借力"
+            else -> "--"
+        }
+        2 -> when (performance) {
+            0 -> "标准"
+            1 -> "肩内旋代偿"
+            2 -> "躯干代偿"
+            3 -> "下落过快"
             else -> "--"
         }
         else -> "--"
@@ -479,8 +486,9 @@ private fun colorForPerformanceRaw(
     cCheat: Color,
     cDefault: Color
 ): Color = when (performance) {
-    1 -> cStandard
-    2 -> cSmall
+    0 -> cStandard
+    1 -> cSmall
+    2 -> cCheat
     3 -> cCheat
     else -> cDefault
 }

@@ -14,6 +14,7 @@ gsonConv     = "2.9.0"     # Retrofit Gson 转换器
 coroutines   = "1.9.0"     # Kotlin 协程
 okhttp      = "4.12.0"
 compose = "1.4.3"    # 或者和 bom 里保持同一个版本
+zaiSdk = "0.0.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -49,6 +50,8 @@ androidx-foundation = { group = "androidx.compose.foundation", name = "foundatio
 
 # Compose 文本输入支持（KeyboardOptions/KeyboardType 等）
 androidx-ui-text = { group = "androidx.compose.ui", name = "ui-text" }
+
+zai-sdk = { group = "ai.z.openapi", name = "zai-sdk", version.ref = "zaiSdk" }
 
 
 [plugins]
