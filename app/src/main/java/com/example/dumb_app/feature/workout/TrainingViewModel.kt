@@ -17,8 +17,8 @@ import kotlin.math.roundToInt
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-/** 每个动作明细（组内的第几次与得分） */
-data class WorkRec(val acOrder: Int, val score: Int)
+/** 每个动作明细（组内的第几次与得分 + exLabel） */
+data class WorkRec(val acOrder: Int, val score: Int, val exLabel: Int?)
 
 /** 一组（set）的累计结构：与后端 items 一一对应 */
 data class PendingItem(
@@ -76,15 +76,18 @@ class TrainingViewModel(
      * 处理硬件上报：只把数据写入“当前组”
      * - expectedType 不匹配则直接丢弃
      * - 去重：rep <= lastRep 丢弃
-     * - 补齐：若首次就是 3，则补 1、2 为 0 分占位
+     * - 补齐：若首次就是 3，则补 1、2 为 0 分占位（exLabel=null）
+     * - 关键：采用 **不可变发布**（复制 works、复制 PendingItem、复制外层 List）
      */
     fun applyExerciseData(
         setIndex: Int,
         expectedType: Int,
         rep: Int,
-        score: Double?
+        score: Double?,
+        exLabel: Int?
     ) {
-        val cur = _pendingItems.value.getOrNull(setIndex) ?: return
+        val oldList = _pendingItems.value
+        val cur = oldList.getOrNull(setIndex) ?: return
         if (cur.type != expectedType) return
         if (rep <= 0) return
 
@@ -94,35 +97,38 @@ class TrainingViewModel(
         // 组内上限
         val k = rep.coerceAtMost(cur.num)
 
+        // 拷贝一个新的 works，再在副本上修改
+        val newWorks = cur.works.toMutableList()
+
         // 补齐缺失（例如第一条就是 3）
-        while (cur.works.size < k - 1) {
-            cur.works.add(WorkRec(acOrder = cur.works.size + 1, score = 0))
+        while (newWorks.size < k - 1) {
+            newWorks.add(WorkRec(acOrder = newWorks.size + 1, score = 0, exLabel = null))
         }
 
-        // 写入当前帧
         val s = (score?.roundToInt() ?: 0)
-        if (cur.works.size >= k) {
-            cur.works[k - 1] = WorkRec(acOrder = k, score = s)
+        val rec = WorkRec(acOrder = k, score = s, exLabel = exLabel)
+        if (newWorks.size >= k) {
+            newWorks[k - 1] = rec
         } else {
-            cur.works.add(WorkRec(acOrder = k, score = s))
+            newWorks.add(rec)
         }
 
-        // 更新 lastRep 并发布新列表（触发 UI 重组）
-        cur.lastRep = k
-        _pendingItems.value = _pendingItems.value.toList()
+        // 复制 PendingItem，并写回新的外层 List
+        val newPi = cur.copy(works = newWorks, lastRep = k)
+        val newList = oldList.toMutableList().apply { this[setIndex] = newPi }.toList()
+        _pendingItems.value = newList
     }
 
-    /** （可选）保存前把每组的未完成次数补 0，确保 works.size == num */
+    /** （可选）保存前把每组的未完成次数补 0，确保 works.size == num（不可变发布） */
     fun fillMissingZeros() {
-        val list = _pendingItems.value.toMutableList()
-        list.forEach { pi ->
-            while (pi.works.size < pi.num) {
-                pi.works.add(WorkRec(acOrder = pi.works.size + 1, score = 0))
+        val newList = _pendingItems.value.map { pi ->
+            val ws = pi.works.toMutableList()
+            while (ws.size < pi.num) {
+                ws.add(WorkRec(acOrder = ws.size + 1, score = 0, exLabel = null))
             }
-            // 如果你希望保存后 lastRep 也对齐到 num：
-            pi.lastRep = pi.works.size
+            pi.copy(works = ws, lastRep = ws.size)
         }
-        _pendingItems.value = list
+        _pendingItems.value = newList
     }
 
     /** 保存当前累计数据，未完成部分补 0 后写入日志 */

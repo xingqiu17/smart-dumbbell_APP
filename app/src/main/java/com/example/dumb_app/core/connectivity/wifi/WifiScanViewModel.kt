@@ -38,7 +38,7 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
         object TrainingExited : WsEvent()
         data class Error(val msg: String): WsEvent()
         data class Data(val payload: String): WsEvent()
-        data class ExerciseData(val exercise: Int, val rep: Int, val score: Double) : WsEvent()
+        data class ExerciseData(val exercise: Int, val rep: Int, val score: Double, val exLabel: Int?) : WsEvent()
         data class TrainingStarted(
             val sessionId: Long,
             val date: String,
@@ -133,9 +133,10 @@ class WifiScanViewModel(application: Application) : AndroidViewModel(application
                                 val exercise = jsonObject.getInt("exercise")
                                 val rep = jsonObject.getInt("rep")
                                 val score = jsonObject.getDouble("score")
+                                val ex_label = jsonObject.getInt("ex_label")
 
                                 // 更新 StateFlow
-                                _wsEvents.value = WsEvent.ExerciseData(exercise, rep, score)
+                                _wsEvents.value = WsEvent.ExerciseData(exercise, rep, score, ex_label)
                             }
                             // 过滤掉包含 "setUser" 和 "user_bound" 的消息，不更新 _wsEvents
                             text.contains("\"event\":\"setUser\"") || text.contains("\"event\":\"user_bound\"") -> {

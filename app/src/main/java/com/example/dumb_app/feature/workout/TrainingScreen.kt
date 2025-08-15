@@ -64,9 +64,7 @@ fun TrainingScreen(
     Log.d(TAG_TS, "compose start: totalSets=$totalSets, cachedSid=$cachedSid")
 
     // 首次进入时，用 Session 初始化 VM
-    LaunchedEffect(TrainingSession.sessionId) {
-        vm.initFromSession()
-    }
+    LaunchedEffect(TrainingSession.sessionId) { vm.initFromSession() }
 
     // 从 VM 读取各组累计（跨导航不丢）
     val pendingItems by vm.pendingItems.collectAsState()
@@ -95,6 +93,7 @@ fun TrainingScreen(
     var currentRep   by remember { mutableStateOf(0) }
     var totalRep     by remember { mutableStateOf(initialTarget) }
     var score        by remember { mutableStateOf<Double?>(null) }
+    var currentExLabel by remember { mutableStateOf<Int?>(null) }
 
     // 固定获取“训练页” BackStackEntry
     val trainingEntryState = remember { mutableStateOf<NavBackStackEntry?>(null) }
@@ -149,6 +148,7 @@ fun TrainingScreen(
         totalRep     = currentItem?.number ?: 0
         currentRep   = 0
         score        = null
+        currentExLabel = null
         inRest       = false
     }
 
@@ -192,12 +192,13 @@ fun TrainingScreen(
                     startedThisSet  = true
                 }
 
-                // 交给 VM 累计
+                // 交给 VM 累计（带 exLabel）
                 vm.applyExerciseData(
                     setIndex     = currentSetIndex,
                     expectedType = cur.type,
                     rep          = e.rep,
-                    score        = e.score
+                    score        = e.score,
+                    exLabel      = e.exLabel
                 )
 
                 // —— 同步 UI 展示 —— //
@@ -206,10 +207,9 @@ fun TrainingScreen(
                 score      = e.score
                 totalRep   = cur.number
                 exerciseName = exerciseNameOf(e.exercise)
+                currentExLabel = e.exLabel
 
                 lastEventKey = eventKey
-                val worksInSet = pendingItems.getOrNull(currentSetIndex)?.works?.size ?: 0
-                Log.d(TAG_TS, "UI update -> currentRep=$currentRep/$totalRep, set=$currentSetIndex, works_in_set=$worksInSet")
             }
             else -> Log.d(TAG_TS, "other wsEvent=$wsEvent")
         }
@@ -241,9 +241,6 @@ fun TrainingScreen(
                     )
                     // vm.saveLog(req)
                     // vm.markPlanComplete()
-                }
-                pendingItems.forEachIndexed { i, pi ->
-                    Log.d(TAG_TS, "ready to save [set=${i+1}] -> type=${pi.type}, num=${pi.num}, works=${pi.works.size}, avg=${pi.avgScore}")
                 }
                 showFinishDialog = true
             }
@@ -287,7 +284,7 @@ fun TrainingScreen(
         return
     }
 
-    // ====== UI：顶部统计 + 评分 + 可滚动“已完成明细”，底部固定“退出训练” ======
+    // ====== UI：顶部统计 + 评分 + 当前组“个数/评分/完成状况”表格，底部固定“退出训练” ======
     Scaffold(
         topBar = {
             SmallTopAppBar(
@@ -309,7 +306,6 @@ fun TrainingScreen(
                 }
             )
         },
-        // ✅ 退出训练固定在最底部
         bottomBar = {
             Surface(tonalElevation = 2.dp, shadowElevation = 8.dp) {
                 Box(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -320,9 +316,7 @@ fun TrainingScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("退出训练", color = Color.White)
-                    }
+                    ) { Text("退出训练", color = Color.White) }
                 }
             }
         }
@@ -354,49 +348,23 @@ fun TrainingScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    // 已完成
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "已完成",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "$currentRep",
-                            style = MaterialTheme.typography.displaySmall
-                        )
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("已完成", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("$currentRep", style = MaterialTheme.typography.displaySmall)
                     }
-
-                    // 竖向分隔
                     Box(
                         modifier = Modifier
-                            .width(1.dp)
-                            .height(44.dp)
+                            .width(1.dp).height(44.dp)
                             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                     )
-
-                    // 预计
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "预计",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "$totalRep",
-                            style = MaterialTheme.typography.displaySmall
-                        )
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("预计", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("$totalRep", style = MaterialTheme.typography.displaySmall)
                     }
                 }
             }
 
-            // ✅ 评分放在卡片下方，居中显示
+            // 评分居中
             Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -411,62 +379,68 @@ fun TrainingScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // —— 可滚动“已完成动作及评分”明细 —— //
+            // —— 当前组“个数 / 评分 / 完成状况”表格 —— //
             Text(
-                text = "已完成明细",
+                text = "已完成明细（当前组）",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.Start)
             )
             Spacer(Modifier.height(8.dp))
 
-            // 从 VM 汇总所有已完成的（到当前为止）
-            val completedList = remember(pendingItems) {
-                pendingItems.flatMapIndexed { setIdx, pi ->
-                    pi.works.mapIndexed { repIdx, sc ->
-                        CompletedRow(
-                            setIndex = setIdx + 1,
-                            repIndex = repIdx + 1,
-                            typeName = exerciseNameOf(pi.type),
-                            scoreStr = sc?.let { String.format("%.1f", it) } ?: "--"
-                        )
-                    }
+            // 表头
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("个数",   modifier = Modifier.weight(0.3f),  style = MaterialTheme.typography.labelLarge)
+                    Text("评分",   modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
+                    Text("完成状况", modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
                 }
             }
 
-            // 让列表占据剩余空间，不足时可滚动；底部按钮固定不动
-            if (completedList.isEmpty()) {
+            Spacer(Modifier.height(6.dp))
+
+            // 直接“即时”从 pendingItems[currentSetIndex] 取，不缓存，确保实时
+            val curPi = pendingItems.getOrNull(currentSetIndex)
+            val curType = curPi?.type ?: 0
+            val rows = curPi?.works?.map { w ->
+                CompletedRow(
+                    count     = w.acOrder,
+                    scoreText = String.format("%.1f", w.score.toDouble()),
+                    labelName = labelNameOf(curType, w.exLabel),
+                    exLabel   = w.exLabel
+                )
+            } ?: emptyList()
+
+            if (rows.isEmpty()) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("暂无已完成记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                ) { Text("暂无已完成记录", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    // 额外底部内边距，避免被底部栏遮挡（即便内容很长也能完整滚动到）
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     contentPadding = PaddingValues(bottom = 12.dp)
                 ) {
-                    items(completedList) { row ->
+                    items(rows) { r ->
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Text(r.count.toString(), modifier = Modifier.weight(0.3f),  style = MaterialTheme.typography.bodyLarge)
+                            Text(r.scoreText,        modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                text = "${row.typeName} · 第${row.setIndex}组 第${row.repIndex}次",
+                                r.labelName,
+                                modifier = Modifier.weight(0.35f),
                                 style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = row.scoreStr,
-                                style = MaterialTheme.typography.titleMedium
+                                color = labelTextColor(r.exLabel)
                             )
                         }
                         Divider()
@@ -523,10 +497,30 @@ private fun exerciseNameOf(type: Int): String = when (type) {
     else -> "动作$type"
 }
 
+/** label -> 文案 */
+private fun labelNameOf(type: Int, exLabel: Int?): String {
+    if (exLabel == null) return "--"
+    return when (exLabel) {
+        0 -> "标准"
+        1 -> "幅度偏小"
+        2 -> "借力"
+        else -> "其他"
+    }
+}
+
+/** label -> 文字颜色映射 */
+@Composable
+private fun labelTextColor(exLabel: Int?): Color = when (exLabel) {
+    0 -> MaterialTheme.colorScheme.primary
+    1 -> MaterialTheme.colorScheme.tertiary
+    2 -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
 /** 展示行数据结构（仅用于 UI） */
 private data class CompletedRow(
-    val setIndex: Int,
-    val repIndex: Int,
-    val typeName: String,
-    val scoreStr: String
+    val count: Int,         // 个数（第几次）
+    val scoreText: String,  // 评分（已格式化）
+    val labelName: String,  // 完成状况（文案）
+    val exLabel: Int?       // 完成状况（用于颜色）
 )
