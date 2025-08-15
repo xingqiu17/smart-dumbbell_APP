@@ -7,7 +7,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +39,14 @@ import com.example.dumb_app.core.model.Log.LogDayDto
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+
+// === 新增：AI 接入 ===
+import com.example.dumb_app.core.ai.AiPromptBuilder
+import com.example.dumb_app.core.ai.AiReportRepository
+import com.example.dumb_app.core.ai.ZhipuGlmRepository
+import com.example.dumb_app.core.ai.AiConfig
 
 // 明细评分内部结构（增加 performance）
 private data class ActionRecord(val score: Int, val performance: Int?)
@@ -66,9 +73,7 @@ fun TrainingRecordDetailScreen(
     navController: NavController
 ) {
     val currentEntry by navController.currentBackStackEntryAsState()
-    val recordEntry = remember(currentEntry) {
-        navController.getBackStackEntry("record")
-    }
+    val recordEntry = remember(currentEntry) { navController.getBackStackEntry("record") }
     val vm: RecordViewModel = viewModel(recordEntry)
 
     val selectedLog by vm.selectedLog.collectAsState()
@@ -90,6 +95,20 @@ fun TrainingRecordDetailScreen(
     val perfColorSmall    = MaterialTheme.colorScheme.tertiary
     val perfColorCheat    = MaterialTheme.colorScheme.error
     val perfColorDefault  = MaterialTheme.colorScheme.onSurfaceVariant
+
+    // ========= AI 报告状态 =========
+    data class AiUiState(
+        val running: Boolean = false,
+        val text: String = "",
+        val error: String? = null,
+        val started: Boolean = false // 控制按钮隐藏
+    )
+    var aiState by remember { mutableStateOf(AiUiState()) }
+    val scope = rememberCoroutineScope()
+    // 使用真实实现（直接在 App 里写 key）
+    val aiRepo: AiReportRepository = remember {
+        ZhipuGlmRepository(apiKey = AiConfig.ZHIPU_API_KEY)
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -166,281 +185,393 @@ fun TrainingRecordDetailScreen(
 
                     // 分组卡片
                     items(groups) { group ->
-                        var expanded by remember { mutableStateOf(false) }
+                        GroupCard(
+                            group = group,
+                            axisColor = axisColor,
+                            chartLineColor = chartLineColor,
+                            perfColorStandard = perfColorStandard,
+                            perfColorSmall = perfColorSmall,
+                            perfColorCheat = perfColorCheat,
+                            perfColorDefault = perfColorDefault
+                        )
+                    }
 
-                        // 每组估算
-                        val calc = remember(group) {
-                            EnergyEstimator.estimateSet(
-                                weightKg = group.weightKg,
-                                reps = max(group.actualReps, 0)
-                            )
-                        }
-
-                        // 完成情况文本（按动作类型 + performance 映射）
-                        val statusTexts = remember(group.actionRecords, group.type) {
-                            group.actionRecords.map { performanceNameOf(group.type, it.performance) }
-                        }
-                        // 完成情况颜色（非 @Composable 函数 + 主题色常量）
-                        val statusColors = remember(group.actionRecords, group.type, perfColorSmall, perfColorCheat, perfColorDefault) {
-                            group.actionRecords.map { ar ->
-                                colorForPerformanceRaw(
-                                    performance = ar.performance,
-                                    cStandard = perfColorStandard,
-                                    cSmall = perfColorSmall,
-                                    cCheat = perfColorCheat,
-                                    cDefault = perfColorDefault
-                                )
-                            }
-                        }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { expanded = !expanded },
-                            shape = RoundedCornerShape(8.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                // 标题行
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "第${group.groupNumber}组：${group.actionName}  ${group.actualReps} 次",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    IconButton(onClick = { expanded = !expanded }) {
-                                        Icon(
-                                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                            contentDescription = if (expanded) "收起" else "展开"
-                                        )
-                                    }
-                                }
-                                // 卡路里 + %1RM
-                                Text(
-                                    text = "卡路里：≈ ${calc.kcalTotal.format1()} kcal（%1RM≈${calc.percent1Rm.roundToInt()}%）",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 32.dp, top = 2.dp, bottom = 6.dp)
-                                )
-
-                                // 平均分
-                                Text(
-                                    text = "平均分：" + (if (group.actionRecords.isEmpty())
-                                        group.avgScoreFromItem.toString()
-                                    else
-                                        group.averageScore.toInt().toString()),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 32.dp, top = 4.dp, bottom = 8.dp)
-                                )
-
-                                if (expanded) {
-                                    // 表头
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 32.dp)
-                                    ) {
-                                        Text("序号", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                                        Text("完成情况", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1.2f), textAlign = TextAlign.Center)
-                                        Text("评分", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                                    }
-                                    Spacer(Modifier.height(4.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        group.actionRecords.forEachIndexed { i, rec ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 32.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text("${i + 1}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                                                Text(
-                                                    statusTexts.getOrNull(i) ?: "--",
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    color = statusColors.getOrNull(i) ?: perfColorDefault,
-                                                    modifier = Modifier.weight(1.2f),
-                                                    textAlign = TextAlign.Center
+                    // ====== 底部：AI 实时生成分析报告 ======
+                    // 1) 生成按钮（未开始时显示；一旦点击，隐藏）
+                    if (!aiState.started) {
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    aiState = AiUiState(running = true, started = true)
+                                    val prompt = AiPromptBuilder.buildTrainingAnalysisPrompt(log)
+                                    scope.launch {
+                                        try {
+                                            aiRepo.streamTrainingAnalysis(
+                                                prompt = prompt,
+                                                model = "glm-4.5",
+                                                thinkingType = "enabled"
+                                            ).collectLatest { delta ->
+                                                aiState = aiState.copy(
+                                                    text = aiState.text + delta,
+                                                    running = true,
+                                                    error = null
                                                 )
-                                                Text("${rec.score}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                                             }
+                                            aiState = aiState.copy(running = false)
+                                        } catch (e: Throwable) {
+                                            aiState = aiState.copy(
+                                                running = false,
+                                                error = e.message ?: "生成失败"
+                                            )
                                         }
                                     }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) { Text("AI 实时生成分析报告", color = Color.White) }
+                        }
+                    }
 
-                                    // 折线图：点颜色跟完成情况
-                                    Spacer(Modifier.height(12.dp))
-                                    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-                                    var selectedIndex by remember { mutableStateOf<Int?>(null) }
-                                    val density = LocalDensity.current
-                                    val hitRadiusPx = with(density) { 16.dp.toPx() }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(260.dp)
-                                            .padding(start = 32.dp, top = 16.dp, end = 16.dp, bottom = 32.dp)
-                                            .pointerInput(group.actionRecords) {
-                                                detectTapGestures { offset ->
-                                                    val scores = group.actionRecords.map { it.score.toFloat() }
-                                                    val count = scores.size
-                                                    if (count == 0 || canvasSize.width == 0) {
-                                                        selectedIndex = null
-                                                        return@detectTapGestures
-                                                    }
-                                                    val w = canvasSize.width.toFloat()
-                                                    val h = canvasSize.height.toFloat()
-                                                    val dx = if (count > 1) w / (count - 1) else w
-                                                    val approxIndex = ((offset.x / dx).roundToInt()).coerceIn(0, count - 1)
-                                                    val px = approxIndex * dx
-                                                    val py = h * (1f - scores[approxIndex] / 100f)
-                                                    val dist = sqrt((offset.x - px) * (offset.x - px) + (offset.y - py) * (offset.y - py))
-                                                    selectedIndex = if (dist <= hitRadiusPx) approxIndex else null
-                                                }
-                                            }
-                                    ) {
-                                        // 画布
-                                        Canvas(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .onSizeChanged { size -> canvasSize = size }
-                                        ) {
-                                            val scores = group.actionRecords.map { it.score.toFloat() }
-                                            val perfs  = group.actionRecords.map { it.performance }
-                                            val count = scores.size
-                                            if (count >= 1) {
-                                                val w = size.width.toFloat()
-                                                val h = size.height.toFloat()
-                                                val dx = if (count > 1) w / (count - 1) else w
-                                                val tick = 4.dp.toPx()
-                                                val labelSize = 12.dp.toPx()
-                                                val paint = Paint().apply {
-                                                    color = AndroidColor.BLACK
-                                                    textSize = labelSize
-                                                    isAntiAlias = true
-                                                    textAlign = Paint.Align.CENTER
-                                                }
-
-                                                // 坐标轴
-                                                drawLine(axisColor, Offset(0f, h), Offset(w, h), 2f)
-                                                drawLine(axisColor, Offset(0f, 0f), Offset(0f, h), 2f)
-
-                                                // x 刻度
-                                                scores.forEachIndexed { i, _ ->
-                                                    val x = i * dx
-                                                    drawLine(axisColor, Offset(x, h), Offset(x, h - tick), 1f)
-                                                    drawContext.canvas.nativeCanvas.drawText(
-                                                        "${i + 1}", x, h + labelSize + 4.dp.toPx(), paint
-                                                    )
-                                                }
-                                                // y 刻度
-                                                listOf(0f, 25f, 50f, 75f, 100f).forEach { v ->
-                                                    val y = h * (1f - v / 100f)
-                                                    drawLine(axisColor, Offset(0f, y), Offset(tick, y), 1f)
-                                                    drawContext.canvas.nativeCanvas.drawText(
-                                                        "${v.toInt()}",
-                                                        -labelSize,
-                                                        y + labelSize / 2,
-                                                        paint.apply { textAlign = Paint.Align.RIGHT }
-                                                    )
-                                                }
-
-                                                // 折线
-                                                if (count >= 2) {
-                                                    val path = Path().apply {
-                                                        scores.forEachIndexed { i, s ->
-                                                            val x = i * dx
-                                                            val y = h * (1f - s / 100f)
-                                                            if (i == 0) moveTo(x, y) else lineTo(x, y)
-                                                        }
-                                                    }
-                                                    drawPath(
-                                                        path,
-                                                        chartLineColor,
-                                                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                                                    )
-                                                }
-
-                                                // 点：使用非 composable 的颜色选择函数
-                                                scores.forEachIndexed { i, s ->
-                                                    val x = i * dx
-                                                    val y = h * (1f - s / 100f)
-                                                    val pointColor = colorForPerformanceRaw(
-                                                        performance = perfs.getOrNull(i),
-                                                        cStandard = perfColorStandard,
-                                                        cSmall = perfColorSmall,
-                                                        cCheat = perfColorCheat,
-                                                        cDefault = perfColorDefault
-                                                    )
-                                                    drawCircle(pointColor, radius = 5.dp.toPx(), center = Offset(x, y))
-                                                }
-
-                                                // 选中效果
-                                                selectedIndex?.let { sel ->
-                                                    val sx = sel * dx
-                                                    val sy = h * (1f - scores[sel] / 100f)
-                                                    drawLine(
-                                                        axisColor.copy(alpha = 0.5f),
-                                                        Offset(sx, 0f),
-                                                        Offset(sx, h),
-                                                        strokeWidth = 1.5.dp.toPx()
-                                                    )
-                                                    drawLine(
-                                                        axisColor.copy(alpha = 0.5f),
-                                                        Offset(0f, sy),
-                                                        Offset(w, sy),
-                                                        strokeWidth = 1.5.dp.toPx()
-                                                    )
-                                                    drawCircle(
-                                                        color = chartLineColor,
-                                                        radius = 8.dp.toPx(),
-                                                        center = Offset(sx, sy),
-                                                        style = Stroke(width = 2.dp.toPx())
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // 悬浮窗
-                                        selectedIndex?.let { sel ->
-                                            val scores = group.actionRecords.map { it.score.toFloat() }
-                                            val perfs  = group.actionRecords.map { it.performance }
-                                            val count = scores.size
-                                            if (count > sel && canvasSize.width > 0) {
-                                                val w = canvasSize.width.toFloat()
-                                                val h = canvasSize.height.toFloat()
-                                                val dx = if (count > 1) w / (count - 1) else w
-                                                val sx = sel * dx
-                                                val sy = h * (1f - scores[sel] / 100f)
-                                                val status = performanceNameOf(group.type, perfs.getOrNull(sel))
-
-                                                val offsetXDp = with(LocalDensity.current) { (sx + 8.dp.toPx()).toDp() }
-                                                val offsetYDp = with(LocalDensity.current) { (sy - 8.dp.toPx()).toDp() }
-
-                                                Surface(
-                                                    tonalElevation = 6.dp,
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = MaterialTheme.colorScheme.surface,
-                                                    modifier = Modifier.offset(x = offsetXDp, y = offsetYDp)
-                                                ) {
-                                                    Column(modifier = Modifier.padding(10.dp).widthIn(min = 160.dp)) {
-                                                        Text("序号：${sel + 1}", style = MaterialTheme.typography.labelLarge)
-                                                        Text("评分：${scores[sel].roundToInt()}", style = MaterialTheme.typography.labelLarge)
-                                                        Text("完成情况：$status", style = MaterialTheme.typography.labelLarge)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                    // 2) 生成中的进度条
+                    if (aiState.started) {
+                        item {
+                            if (aiState.running) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                )
+                                Spacer(Modifier.height(6.dp))
                             }
                         }
                     }
+
+                    // 3) 报告卡片（流式内容追加）
+                    if (aiState.started) {
+                        item {
+                            ElevatedCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text(
+                                        "AI 分析报告",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    if (aiState.text.isNotBlank()) {
+                                        Text(aiState.text, style = MaterialTheme.typography.bodyMedium)
+                                    } else if (aiState.running) {
+                                        Text("正在生成中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+
+                                    aiState.error?.let { err ->
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            "生成失败：$err",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                            TextButton(onClick = {
+                                                aiState = AiUiState(running = true, started = true)
+                                                val prompt = AiPromptBuilder.buildTrainingAnalysisPrompt(log)
+                                                scope.launch {
+                                                    try {
+                                                        aiRepo.streamTrainingAnalysis(
+                                                            prompt = prompt,
+                                                            model = "glm-4.5",
+                                                            thinkingType = "enabled"
+                                                        ).collectLatest { delta ->
+                                                            aiState = aiState.copy(
+                                                                text = aiState.text + delta,
+                                                                running = true,
+                                                                error = null
+                                                            )
+                                                        }
+                                                        aiState = aiState.copy(running = false)
+                                                    } catch (e: Throwable) {
+                                                        aiState = aiState.copy(
+                                                            running = false,
+                                                            error = e.message ?: "生成失败"
+                                                        )
+                                                    }
+                                                }
+                                            }) { Text("重试") }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(24.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* === 子组件：每组卡片（保持你原实现） === */
+@Composable
+private fun GroupCard(
+    group: GroupRecord,
+    axisColor: Color,
+    chartLineColor: Color,
+    perfColorStandard: Color,
+    perfColorSmall: Color,
+    perfColorCheat: Color,
+    perfColorDefault: Color
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    // 每组估算
+    val calc = remember(group) {
+        EnergyEstimator.estimateSet(
+            weightKg = group.weightKg,
+            reps = max(group.actualReps, 0)
+        )
+    }
+
+    // 完成情况文本
+    val statusTexts = remember(group.actionRecords, group.type) {
+        group.actionRecords.map { performanceNameOf(group.type, it.performance) }
+    }
+    // 完成情况颜色
+    val statusColors = remember(group.actionRecords, group.type, perfColorSmall, perfColorCheat, perfColorDefault) {
+        group.actionRecords.map { ar ->
+            colorForPerformanceRaw(
+                performance = ar.performance,
+                cStandard = perfColorStandard,
+                cSmall = perfColorSmall,
+                cCheat = perfColorCheat,
+                cDefault = perfColorDefault
+            )
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded },
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "第${group.groupNumber}组：${group.actionName}  ${group.actualReps} 次",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "收起" else "展开"
+                    )
+                }
+            }
+            Text(
+                text = "卡路里：≈ ${calc.kcalTotal.format1()} kcal（%1RM≈${calc.percent1Rm.roundToInt()}%）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 32.dp, top = 2.dp, bottom = 6.dp)
+            )
+            Text(
+                text = "平均分：" + (if (group.actionRecords.isEmpty())
+                    group.avgScoreFromItem.toString()
+                else
+                    group.averageScore.toInt().toString()),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 32.dp, top = 4.dp, bottom = 8.dp)
+            )
+
+            if (expanded) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                ) {
+                    Text("序号", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                    Text("完成情况", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1.2f), textAlign = TextAlign.Center)
+                    Text("评分", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                }
+                Spacer(Modifier.height(4.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    group.actionRecords.forEachIndexed { i, rec ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("${i + 1}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                            Text(
+                                statusTexts.getOrNull(i) ?: "--",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = statusColors.getOrNull(i) ?: perfColorDefault,
+                                modifier = Modifier.weight(1.2f),
+                                textAlign = TextAlign.Center
+                            )
+                            Text("${rec.score}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                ScoreChart(
+                    scores = group.actionRecords.map { it.score.toFloat() },
+                    perfs = group.actionRecords.map { it.performance },
+                    axisColor = axisColor,
+                    chartLineColor = chartLineColor,
+                    perfColorStandard = perfColorStandard,
+                    perfColorSmall = perfColorSmall,
+                    perfColorCheat = perfColorCheat,
+                    perfColorDefault = perfColorDefault
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoreChart(
+    scores: List<Float>,
+    perfs: List<Int?>,
+    axisColor: Color,
+    chartLineColor: Color,
+    perfColorStandard: Color,
+    perfColorSmall: Color,
+    perfColorCheat: Color,
+    perfColorDefault: Color
+) {
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
+    val density = LocalDensity.current
+    val hitRadiusPx = with(density) { 16.dp.toPx() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .padding(start = 32.dp, top = 16.dp, end = 16.dp, bottom = 32.dp)
+            .pointerInput(scores) {
+                detectTapGestures { offset ->
+                    val count = scores.size
+                    if (count == 0 || canvasSize.width == 0) {
+                        selectedIndex = null
+                        return@detectTapGestures
+                    }
+                    val w = canvasSize.width.toFloat()
+                    val h = canvasSize.height.toFloat()
+                    val dx = if (count > 1) w / (count - 1) else w
+                    val approxIndex = ((offset.x / dx).roundToInt()).coerceIn(0, count - 1)
+                    val px = approxIndex * dx
+                    val py = h * (1f - scores[approxIndex] / 100f)
+                    val dist = kotlin.math.sqrt((offset.x - px) * (offset.x - px) + (offset.y - py) * (offset.y - py))
+                    selectedIndex = if (dist <= hitRadiusPx) approxIndex else null
+                }
+            }
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { size -> canvasSize = size }
+        ) {
+            val count = scores.size
+            if (count >= 1) {
+                val w = size.width.toFloat()
+                val h = size.height.toFloat()
+                val dx = if (count > 1) w / (count - 1) else w
+                val tick = 4.dp.toPx()
+                val labelSize = 12.dp.toPx()
+                val paint = Paint().apply {
+                    color = AndroidColor.BLACK
+                    textSize = labelSize
+                    isAntiAlias = true
+                    textAlign = Paint.Align.CENTER
+                }
+
+                drawLine(axisColor, Offset(0f, h), Offset(w, h), 2f)
+                drawLine(axisColor, Offset(0f, 0f), Offset(0f, h), 2f)
+
+                scores.forEachIndexed { i, _ ->
+                    val x = i * dx
+                    drawLine(axisColor, Offset(x, h), Offset(x, h - tick), 1f)
+                    drawContext.canvas.nativeCanvas.drawText(
+                        "${i + 1}", x, h + labelSize + 4.dp.toPx(), paint
+                    )
+                }
+                listOf(0f, 25f, 50f, 75f, 100f).forEach { v ->
+                    val y = h * (1f - v / 100f)
+                    drawLine(axisColor, Offset(0f, y), Offset(tick, y), 1f)
+                    drawContext.canvas.nativeCanvas.drawText(
+                        "${v.toInt()}",
+                        -labelSize,
+                        y + labelSize / 2,
+                        paint.apply { textAlign = Paint.Align.RIGHT }
+                    )
+                }
+
+                if (count >= 2) {
+                    val path = Path().apply {
+                        scores.forEachIndexed { i, s ->
+                            val x = i * dx
+                            val y = h * (1f - s / 100f)
+                            if (i == 0) moveTo(x, y) else lineTo(x, y)
+                        }
+                    }
+                    drawPath(
+                        path,
+                        chartLineColor,
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+
+                scores.forEachIndexed { i, s ->
+                    val x = i * dx
+                    val y = h * (1f - s / 100f)
+                    val pointColor = colorForPerformanceRaw(
+                        performance = perfs.getOrNull(i),
+                        cStandard = perfColorStandard,
+                        cSmall = perfColorSmall,
+                        cCheat = perfColorCheat,
+                        cDefault = perfColorDefault
+                    )
+                    drawCircle(pointColor, radius = 5.dp.toPx(), center = Offset(x, y))
+                }
+
+                selectedIndex?.let { sel ->
+                    val sx = sel * dx
+                    val sy = h * (1f - scores[sel] / 100f)
+                    drawLine(
+                        axisColor.copy(alpha = 0.5f),
+                        Offset(sx, 0f),
+                        Offset(sx, h),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+                    drawLine(
+                        axisColor.copy(alpha = 0.5f),
+                        Offset(0f, sy),
+                        Offset(w, sy),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+                    drawCircle(
+                        color = chartLineColor,
+                        radius = 8.dp.toPx(),
+                        center = Offset(sx, sy),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
                 }
             }
         }
@@ -457,7 +588,7 @@ private fun exerciseNameOf(type: Int): String = when (type) {
     else -> "动作$type"
 }
 
-/** 完成情况：按动作类型 + performance 值映射，目前仅定义 type=1 */
+/** 完成情况：按动作类型 + performance 值映射（1/2 已定义） */
 private fun performanceNameOf(type: Int, performance: Int?): String {
     if (performance == null) return "--"
     return when (type) {
@@ -478,7 +609,7 @@ private fun performanceNameOf(type: Int, performance: Int?): String {
     }
 }
 
-/** 非 Composable 的颜色选择函数（把主题色作为参数传入） */
+/** 非 Composable 的颜色选择函数 */
 private fun colorForPerformanceRaw(
     performance: Int?,
     cStandard: Color,
@@ -488,8 +619,7 @@ private fun colorForPerformanceRaw(
 ): Color = when (performance) {
     0 -> cStandard
     1 -> cSmall
-    2 -> cCheat
-    3 -> cCheat
+    2, 3 -> cCheat
     else -> cDefault
 }
 
