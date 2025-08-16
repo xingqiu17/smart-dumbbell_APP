@@ -42,6 +42,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import com.example.dumb_app.core.util.LogAnalysisSession
 
 // === 新增：AI 接入 ===
 import com.example.dumb_app.core.ai.AiPromptBuilder
@@ -205,7 +206,13 @@ fun TrainingRecordDetailScreen(
                             Button(
                                 onClick = {
                                     aiState = AiUiState(running = true, started = true)
-                                    val prompt = AiPromptBuilder.buildTrainingAnalysisPrompt(log)
+
+                                    // 用本页的实际数据构建 Prompt，并保存会话
+                                    val prompt = buildScreenPrompt(log, groups)
+                                    LogAnalysisSession.recordId = log.session?.recordId?.toString()
+                                    LogAnalysisSession.builtPrompt = prompt
+                                    LogAnalysisSession.resultText = null
+
                                     scope.launch {
                                         try {
                                             aiRepo.streamTrainingAnalysis(
@@ -213,12 +220,15 @@ fun TrainingRecordDetailScreen(
                                                 model = "glm-4.5",
                                                 thinkingType = "enabled"
                                             ).collectLatest { delta ->
+                                                // 逐字追加（ZhipuGlmRepository 已改为逐字符发射）
                                                 aiState = aiState.copy(
                                                     text = aiState.text + delta,
                                                     running = true,
                                                     error = null
                                                 )
                                             }
+                                            // 流结束，保存最终结果
+                                            LogAnalysisSession.resultText = aiState.text
                                             aiState = aiState.copy(running = false)
                                         } catch (e: Throwable) {
                                             aiState = aiState.copy(
@@ -280,7 +290,12 @@ fun TrainingRecordDetailScreen(
                                         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                                             TextButton(onClick = {
                                                 aiState = AiUiState(running = true, started = true)
-                                                val prompt = AiPromptBuilder.buildTrainingAnalysisPrompt(log)
+
+                                                val prompt = buildScreenPrompt(log, groups)
+                                                LogAnalysisSession.recordId = log.session?.recordId?.toString()
+                                                LogAnalysisSession.builtPrompt = prompt
+                                                LogAnalysisSession.resultText = null
+
                                                 scope.launch {
                                                     try {
                                                         aiRepo.streamTrainingAnalysis(
@@ -294,6 +309,7 @@ fun TrainingRecordDetailScreen(
                                                                 error = null
                                                             )
                                                         }
+                                                        LogAnalysisSession.resultText = aiState.text
                                                         aiState = aiState.copy(running = false)
                                                     } catch (e: Throwable) {
                                                         aiState = aiState.copy(
@@ -737,3 +753,58 @@ private object EnergyEstimator {
 
 /* 小工具 */
 private fun Float.format1(): String = String.format("%.1f", this)
+
+// 用当前页面的数据构建更完整的 Prompt（包含逐组评分与完成情况统计）
+private fun buildScreenPrompt(log: LogDayDto, groups: List<GroupRecord>): String {
+    fun perfName(type: Int, p: Int?): String {
+        return performanceNameOf(type, p)?.takeIf { it != "--" } ?: "其他"
+    }
+
+    val sb = StringBuilder()
+    sb.appendLine("你是一名专业健身教练与运动数据分析师。请对以下一次训练进行专业分析，并给出可执行的改进建议。")
+    sb.appendLine("要求：")
+    sb.appendLine("1) 先给出整体总结（强项/薄弱项/风险点）")
+    sb.appendLine("2) 按动作逐组分析（代表性评分、完成情况标签统计、幅度/节奏/稳定性）")
+    sb.appendLine("3) 给出下一次训练的具体建议（重量、次数、休息时间、技术要点）")
+    sb.appendLine("4) 语言简洁、分点列出，字数控制在 300~500 字")
+    sb.appendLine()
+    sb.appendLine("【思考模式】thinking.type=enabled（请在内部完成分步推理，不要输出思考过程）")
+    sb.appendLine()
+
+    // 顶部元信息
+    sb.appendLine("【基本信息】")
+    sb.appendLine("日期：${log.session?.date ?: "--"}")
+    sb.appendLine("记录ID：${log.session?.recordId ?: "--"}")
+    sb.appendLine()
+
+    // 逐组明细
+    sb.appendLine("【逐组明细】")
+    groups.forEach { g ->
+        val scores = g.actionRecords.map { it.score }
+        val perfs  = g.actionRecords.map { it.performance }
+        val perfStat = perfs.groupBy { it }.mapValues { it.value.size }
+
+        sb.appendLine("第${g.groupNumber}组：${g.actionName}")
+        sb.appendLine("- 配重：${g.weightKg.format1()} kg，实际次数：${g.actualReps}，平均分（四舍五入）：${g.averageScore.toInt()}")
+        if (scores.isNotEmpty()) sb.appendLine("- 逐次评分：${scores.joinToString(", ")}")
+        if (perfs.isNotEmpty()) {
+            val perfText = perfStat.entries.joinToString("，") { (k, cnt) ->
+                "${perfName(g.type, k)}×$cnt"
+            }
+            sb.appendLine("- 完成情况统计：$perfText")
+        }
+        sb.appendLine()
+    }
+
+    // 原计划参数
+    if (log.items.isNotEmpty()) {
+        sb.appendLine("【计划参数（原始设定）】")
+        log.items.sortedBy { it.tOrder }.forEachIndexed { idx, item ->
+            sb.appendLine("第${idx + 1}组｜type=${item.type} target_reps=${item.num} weight=${item.tWeight}kg avgScore=${item.avgScore}")
+        }
+        sb.appendLine()
+    }
+
+    sb.appendLine("请综合【逐组明细】与【计划参数】，提出实用改进建议，并说明理由。")
+    return sb.toString()
+}

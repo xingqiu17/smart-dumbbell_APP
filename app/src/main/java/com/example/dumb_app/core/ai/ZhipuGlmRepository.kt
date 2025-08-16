@@ -18,6 +18,7 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
 /**
  * 对接 GLM-4.5 SSE 流式接口：
@@ -45,7 +46,7 @@ class ZhipuGlmRepository(
         val bodyJson = buildJsonBody(prompt, model, thinkingType)
 
         Log.d(TAG, "[$rid] → POST $endpoint")
-        Log.d(TAG, "[$rid] headers: Authorization=Bearer ${redact(apiKey)}, Accept=text/event-stream")
+        Log.d(TAG, "[$rid] headers: Authorization=Bearer ${redact(apiKey)}, Accept=application/json")
         Log.d(TAG, "[$rid] body.preview=${preview(bodyJson)}")
 
         val body = bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -53,13 +54,12 @@ class ZhipuGlmRepository(
             .url(endpoint)
             .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Content-Type", "application/json")
-            .addHeader("Accept", "text/event-stream")
+            .addHeader("Accept", "application/json")
             .post(body)
             .build()
 
         val call = http.newCall(req)
 
-        // ★ 在 IO 线程里执行整个阻塞请求 + 读取
         val job = launch(Dispatchers.IO) {
             try {
                 val resp = call.execute()
@@ -74,54 +74,21 @@ class ZhipuGlmRepository(
                     throw IllegalStateException("HTTP ${resp.code}: ${resp.message}; body=${preview(errText)}")
                 }
 
-                // ★ 先判断是否是 SSE，再决定读取方式（避免先 consume 再 string）
-                val ctHeader = resp.header("Content-Type") ?: respBody.contentType()?.toString().orEmpty()
-                val isSse = ctHeader.contains("text/event-stream", ignoreCase = true)
+                // ★ 一次性读取完整 JSON
+                val whole = respBody.string()
+                Log.v(TAG, "[$rid] whole.preview=${preview(whole)}")
 
-                if (isSse) {
-                    Log.d(TAG, "[$rid] detected SSE, start line-by-line reading")
-                    respBody.use { bodyUse ->
-                        val source = bodyUse.source()
-                        var lineNo = 0
-                        while (!source.exhausted()) {
-                            val raw = source.readUtf8Line() ?: continue
-                            if (raw.isBlank()) continue
-                            lineNo++
-
-                            Log.v(TAG, "[$rid] sse[$lineNo]: ${preview(raw)}")
-
-                            if (!raw.startsWith("data:")) continue
-                            val payload = raw.removePrefix("data:").trim()
-                            if (payload == "[DONE]") {
-                                Log.d(TAG, "[$rid] SSE done")
-                                break
-                            }
-                            val delta = parseDelta(payload)
-                            if (delta.isEmpty()) {
-                                Log.w(TAG, "[$rid] empty delta parsed from: ${preview(payload)}")
-                            } else {
-                                trySend(delta)
-                            }
-                        }
-                    }
-                } else {
-                    Log.w(TAG, "[$rid] not SSE; read whole body as JSON")
-                    val whole = respBody.string()
-                    Log.v(TAG, "[$rid] whole.preview=${preview(whole)}")
-                    val delta = parseDelta(whole)
-                    if (delta.isEmpty()) {
-                        Log.e(TAG, "[$rid] whole body parse failed (no delta).")
-                        throw IllegalStateException("Non-SSE response parse failed. body=${preview(whole)}")
-                    } else {
-                        trySend(delta)
-                    }
+                val full = parseFullContent(whole)
+                if (full.isEmpty()) {
+                    Log.e(TAG, "[$rid] parse empty content.")
+                    throw IllegalStateException("Empty response content.")
                 }
 
-                // 正常结束
+                // ★ 仅发射一次完整文本
+                trySend(full)
                 close()
             } catch (e: Throwable) {
                 Log.e(TAG, "[$rid] exception: ${e.javaClass.simpleName}: ${e.message}", e)
-                // 把可视化的错误信息传给 UI
                 trySend("[生成失败] ${e.message ?: e.toString()}")
                 close(e)
             }
@@ -138,11 +105,12 @@ class ZhipuGlmRepository(
     private fun buildJsonBody(prompt: String, model: String, thinkingType: String): String {
         val obj = JSONObject().apply {
             put("model", model)
-            put("do_sample", true)
-            put("stream", true)
+            put("do_sample", false)               // 稳定输出（可改 true）
+            put("stream", false)                  // ★ 关闭流式
             put("thinking", JSONObject().put("type", thinkingType))
             put("temperature", 0.6)
             put("top_p", 0.95)
+            put("max_tokens", AiConfig.MAX_TOKENS) // ★ 拉高上限，避免“只显示一半”
             put("response_format", JSONObject().put("type", "text"))
             put("messages", JSONArray().put(
                 JSONObject().put("role", "user").put("content", prompt)
@@ -151,6 +119,7 @@ class ZhipuGlmRepository(
         }
         return obj.toString()
     }
+
 
     /**
      * 解析增量文本，兼容：
@@ -184,6 +153,37 @@ class ZhipuGlmRepository(
             ""
         }
     }
+
+    /**
+     * 非流式解析：兼容
+     *  - choices[0].message.content
+     *  - choices[0].content
+     *  - { "error": { "message": ... } } / { "msg": ... }
+     */
+    private fun parseFullContent(jsonStr: String): String {
+        return try {
+            val root = JSONObject(jsonStr)
+
+            // 错误结构
+            root.optJSONObject("error")?.optString("message")?.let { if (it.isNotEmpty()) return it }
+            root.optString("msg").takeIf { it.isNotEmpty() }?.let { return it }
+
+            if (!root.has("choices")) return root.optString("content", "")
+
+            val choices = root.getJSONArray("choices")
+            if (choices.length() == 0) return ""
+
+            val ch0 = choices.getJSONObject(0)
+            when {
+                ch0.has("message") -> ch0.getJSONObject("message").optString("content", "")
+                else -> ch0.optString("content", "")
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "parseFullContent JSON error: ${t.message}; preview=${preview(jsonStr)}")
+            ""
+        }
+    }
+
 
     private fun shortId(): String = UUID.randomUUID().toString().substring(0, 8)
 
