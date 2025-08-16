@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.dumb_app.core.model.Log.LogDayDto
@@ -439,6 +440,7 @@ private fun GroupCard(
                     perfColorCheat = perfColorCheat,
                     perfColorDefault = perfColorDefault
                 )
+                AdviceSection(type = group.type)
             }
         }
     }
@@ -608,6 +610,83 @@ private fun performanceNameOf(type: Int, performance: Int?): String {
         else -> "--"
     }
 }
+
+// ================== 固定建议文案 ==================
+private data class AdviceItem(
+    val problemWithExplain: String,  // “问题：解释”合并为一行文本
+    val solution: String             // “解决方法：……”
+)
+
+private fun adviceForExercise(type: Int): List<AdviceItem> = when (type) {
+    // 1 = 哑铃弯举
+    1 -> listOf(
+        AdviceItem(
+            problemWithExplain = "借力：身体摆动或利用腰、肩等部位的冲力完成弯举，肱二头肌受力减少，训练效果下降且易受伤。",
+            solution = "减轻重量、保持核心稳定、放慢动作、可靠墙弯举防止摆动。"
+        ),
+        AdviceItem(
+            problemWithExplain = "动作幅度过小：上下运动范围不足，未全程收缩或伸展，导致刺激不足、训练效果差。",
+            solution = "全程发力（下放至接近伸直、上举至完全收缩）、减轻重量、固定肘关节、用镜子或视频检查。"
+        )
+    )
+    // 2 = 侧平举
+    2 -> listOf(
+        AdviceItem(
+            problemWithExplain = "肩内旋代偿：动作中手臂向内旋转，导致肩关节位置不佳，增加肩袖损伤风险。",
+            solution = "保持手腕略低于肘关节、肩部放松，动作全程维持中立位或轻微外旋。"
+        ),
+        AdviceItem(
+            problemWithExplain = "躯干代偿：借助身体侧倾或晃动抬起哑铃，减少肩部肌肉发力。",
+            solution = "减轻重量、收紧核心、保持躯干稳定，可靠墙或镜子辅助检查。"
+        ),
+        AdviceItem(
+            problemWithExplain = "下落过快：哑铃回落速度过快，离心阶段缺乏控制，降低肌肉刺激并增加关节冲击。",
+            solution = "下放速度放慢至 2-3 秒，全程控制重量，不依赖重力下落。"
+        )
+    )
+    else -> emptyList()
+}
+
+// ================== UI 区块渲染 ==================
+@Composable
+private fun AdviceSection(type: Int) {
+    val list = remember(type) { adviceForExercise(type) }
+    if (list.isEmpty()) return
+
+    Spacer(Modifier.height(12.dp))
+    Divider()
+    Spacer(Modifier.height(8.dp))
+
+    Text(
+        "常见问题与建议",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(start = 32.dp, end = 16.dp)
+    )
+
+    Spacer(Modifier.height(6.dp))
+
+    Column(
+        modifier = Modifier.padding(start = 32.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        list.forEach { a ->
+            // “问题：解释”
+            Text(
+                a.problemWithExplain,
+                style = MaterialTheme.typography.bodySmall ,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(1.dp))
+            // “解决方法：……”
+            Text(
+                "解决方法：${a.solution}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 
 /** 非 Composable 的颜色选择函数 */
 private fun colorForPerformanceRaw(
